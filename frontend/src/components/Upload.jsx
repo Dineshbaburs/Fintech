@@ -4,37 +4,66 @@ import { useState } from "react";
 export default function Upload() {
   const [file, setFile] = useState(null);
   const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const uploadFile = async () => {
-    const formData = new FormData();
-    formData.append("file", file);
+    if (!file) {
+      alert("Please select a file first!");
+      return;
+    }
 
-    const res = await axios.post(
-      "http://127.0.0.1:8000/bulk_predict",
-      formData
-    );
+    try {
+      setLoading(true);
 
-    setData(res.data);
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await axios.post(
+        "http://127.0.0.1:8000/bulk_predict",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      setData(res.data);
+      console.log(res.data);
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Upload failed! Check backend.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="bg-[#1c1f26] p-5 rounded-2xl">
-      <h2 className="mb-4">Upload CSV</h2>
+    <div className="bg-[#1c1f26] p-5 rounded-2xl border border-gray-800">
+      <h2 className="mb-4 text-lg font-semibold">Upload CSV</h2>
 
-      <input type="file" onChange={(e) => setFile(e.target.files[0])} />
+      <input
+        type="file"
+        className="mb-3"
+        onChange={(e) => setFile(e.target.files[0])}
+      />
 
       <button
-        className="bg-blue-500 px-4 py-2 ml-3 rounded"
+        className="bg-blue-500 px-4 py-2 rounded hover:bg-blue-600"
         onClick={uploadFile}
       >
-        Upload
+        {loading ? "Uploading..." : "Upload"}
       </button>
 
       <div className="mt-4">
+        {data.length > 0 && (
+          <h3 className="mb-2 text-green-400">Results:</h3>
+        )}
+
         {data.slice(0, 5).map((row, i) => (
-          <div key={i} className="flex justify-between border-b py-2">
+          <div key={i} className="flex justify-between border-b py-2 text-sm">
             <span>{row.description}</span>
-            <span>{row.predicted}</span>
+            <span className="text-green-400">{row.predicted}</span>
           </div>
         ))}
       </div>
