@@ -1,19 +1,19 @@
 from fastapi import FastAPI
-from database import insert_data, cursor
+from database import insert_data, fetch_all
 
 app = FastAPI()
 
 @app.get("/")
 def home():
-    return {"message": "FinTech API Running"}
+    return {"message": "API running"}
 
+# Insert flexible data
 @app.post("/add/")
-def add_transaction(user: str, description: str, amount: float, category: str):
-    insert_data(user, description, amount, category)
+def add_transaction(user: str, data: dict):
+    insert_data(user, data)
     return {"status": "stored"}
 
+# Get all data
 @app.get("/transactions/")
 def get_transactions():
-    cursor.execute("SELECT * FROM transactions")
-    data = cursor.fetchall()
-    return {"data": data}
+    return {"data": fetch_all()}

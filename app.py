@@ -9,38 +9,62 @@ from sklearn.ensemble import IsolationForest
 st.set_page_config(page_title="FinData Intelligence", layout="wide")
 
 # -----------------------
-# 🎨 KEEP YOUR UI SAME
+# 🎨 PREMIUM COLORFUL UI
 # -----------------------
 st.markdown("""
 <style>
+
+/* Background */
 body {
-    background-color: #0f172a;
+    background: linear-gradient(135deg, #0f172a, #020617);
 }
+
+/* Main */
 .main {
-    background-color: #0f172a;
     color: white;
 }
-.block-container {
-    padding-top: 1rem;
-    padding-bottom: 1rem;
-}
+
+/* Cards */
 .card {
-    background: linear-gradient(135deg, #1e293b, #020617);
+    background: linear-gradient(135deg, #1e3a8a, #0ea5e9);
     padding: 20px;
-    border-radius: 16px;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    border-radius: 18px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.5);
     text-align: center;
+    transition: 0.3s;
 }
+.card:hover {
+    transform: scale(1.05);
+    background: linear-gradient(135deg, #2563eb, #06b6d4);
+}
+
+/* Metrics */
 .metric {
-    font-size: 28px;
+    font-size: 30px;
     font-weight: bold;
 }
 .subtext {
-    color: #94a3b8;
+    font-size: 14px;
+    opacity: 0.8;
 }
-.section {
-    margin-top: 30px;
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #020617, #1e293b);
 }
+
+/* Buttons */
+.stButton>button {
+    background: linear-gradient(90deg, #22c55e, #16a34a);
+    color: white;
+    border-radius: 10px;
+}
+
+/* Progress */
+.stProgress > div > div {
+    background-color: #22c55e;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,24 +83,26 @@ def load_model():
 model = load_model()
 
 # -----------------------
-# 📊 DEFINE CATEGORIES
-# -----------------------
-categories = ["Food", "Transport", "Shopping", "Rent", "Utilities", "Entertainment"]
-
-# -----------------------
 # 📱 SIDEBAR
 # -----------------------
 st.sidebar.title("📱 Banking Menu")
 page = st.sidebar.radio("Navigate", ["🏠 Home", "📊 Analytics", "📈 Insights", "🗄️ Database"])
 
-# API Status
+# -----------------------
+# API STATUS
+# -----------------------
 try:
-    requests.get("http://127.0.0.1:8000/")
-    st.sidebar.success("🟢 Backend Online")
+    res = requests.get("http://127.0.0.1:8000/", timeout=2)
+    if res.status_code == 200:
+        st.sidebar.success("🟢 Backend Online")
+    else:
+        st.sidebar.error("🔴 Backend Error")
 except:
     st.sidebar.error("🔴 Backend Offline")
 
-# Upload
+# -----------------------
+# 📂 UPLOAD
+# -----------------------
 st.sidebar.markdown("### 📂 Upload Data")
 file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 
@@ -84,21 +110,28 @@ if file:
     df = pd.read_csv(file)
     df = clean_data(df)
 
-    # -----------------------
-    # ML CLASSIFICATION
-    # -----------------------
+    # ML
     df['Category'] = model.predict(df['Description'])
-
-    # Confidence score
     probs = model.predict_proba(df['Description'])
     df['Confidence'] = probs.max(axis=1)
 
-    # -----------------------
-    # FRAUD DETECTION
-    # -----------------------
+    # Fraud
     iso = IsolationForest(contamination=0.1)
     df['Fraud'] = iso.fit_predict(df[['Amount']])
     df['Fraud'] = df['Fraud'].apply(lambda x: "⚠️" if x == -1 else "✅")
+
+    # Store in DB
+    try:
+        for i in range(len(df)):
+            row_dict = df.iloc[i].to_dict()
+
+            requests.post(
+                "http://127.0.0.1:8000/add/",
+                params={"user": "default"},
+                json={"data": row_dict}
+            )
+    except:
+        st.warning("⚠️ API not running")
 
     st.session_state.df = df
 
@@ -116,7 +149,7 @@ if page == "🏠 Home":
         col1.markdown(f"""
         <div class="card">
             <div class="metric">₹ {df['Amount'].sum()}</div>
-            <div class="subtext">Total Balance</div>
+            <div class="subtext">Total Spending</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -134,9 +167,7 @@ if page == "🏠 Home":
         </div>
         """, unsafe_allow_html=True)
 
-        # -----------------------
-        # MODEL EVALUATION
-        # -----------------------
+        # Accuracy
         st.subheader("🧠 Model Accuracy")
         train_df = pd.read_csv("training_data.csv")
         accuracy = model.evaluate(train_df)
@@ -154,12 +185,23 @@ elif page == "📊 Analytics":
     if "df" in st.session_state:
         df = st.session_state.df
 
-        fig1 = px.pie(df, names='Category', hole=0.4)
-        st.plotly_chart(fig1, use_container_width=True)
+        fig1 = px.pie(
+            df,
+            names='Category',
+            hole=0.5,
+            color_discrete_sequence=px.colors.sequential.Tealgrn
+        )
+        st.plotly_chart(fig1, width="stretch")
 
         df['Date'] = pd.to_datetime(df['Date'])
-        fig2 = px.line(df, x='Date', y='Amount')
-        st.plotly_chart(fig2, use_container_width=True)
+        fig2 = px.line(
+            df,
+            x='Date',
+            y='Amount',
+            markers=True,
+            color_discrete_sequence=['#22c55e']
+        )
+        st.plotly_chart(fig2, width="stretch")
 
     else:
         st.warning("Upload data first")
@@ -184,9 +226,7 @@ elif page == "📈 Insights":
         else:
             st.success("✅ Within budget")
 
-        # -----------------------
-        # SAVINGS TIPS
-        # -----------------------
+        # Tips
         st.subheader("💡 Savings Tips")
 
         if df[df['Category']=="Food"]['Amount'].sum() > 3000:
@@ -198,16 +238,12 @@ elif page == "📈 Insights":
         if total > 10000:
             st.error("High monthly spending ⚠️")
 
-        # -----------------------
-        # SEARCH
-        # -----------------------
+        # Search
         search = st.text_input("🔍 Search transactions")
         if search:
-            st.dataframe(df[df['Description'].str.contains(search)])
+            st.dataframe(df[df['Description'].str.contains(search)], width="stretch")
 
-        # -----------------------
-        # ADVANCED INSIGHTS
-        # -----------------------
+        # Advanced
         st.subheader("📈 Advanced Analysis")
 
         max_txn = df.loc[df['Amount'].idxmax()]
@@ -228,8 +264,10 @@ elif page == "🗄️ Database":
     try:
         res = requests.get("http://127.0.0.1:8000/transactions/")
         data = res.json()['data']
-        df_db = pd.DataFrame(data, columns=["ID","User","Desc","Amount","Category"])
-        st.dataframe(df_db, use_container_width=True)
+
+        df_db = pd.DataFrame(data)
+        st.dataframe(df_db, width="stretch")
+
     except:
         st.error("API not running")
 
