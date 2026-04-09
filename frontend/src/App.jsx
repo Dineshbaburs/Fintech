@@ -3,7 +3,7 @@ import Dashboard from "./pages/Dashboard";
 
 function App() {
   return (
-    <div className="flex w-full min-h-screen bg-[#0E1117] text-white">
+    <div className="flex min-h-screen w-full flex-col bg-[#0E1117] text-white lg:flex-row">
       <Sidebar />
       <Dashboard />
     </div>
