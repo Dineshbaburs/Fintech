@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -7,7 +7,8 @@ const currencyFormatter = new Intl.NumberFormat("en-IN", {
 });
 
 function getRowCategory(row) {
-  return row.predicted_category || row.predicted || row.category || "Others";
+  const rawCategory = row.predicted_category || row.predicted || row.category || "Others";
+  return String(rawCategory).trim() || "Others";
 }
 
 function normalize(value) {
@@ -40,25 +41,40 @@ function matchesCategorySearch(row, searchTerm) {
 
 function getRowAmount(row) {
   const rawAmount = row.amount ?? row.transaction_amount ?? row.value ?? row.amt ?? 0;
-  const numericAmount = Number(rawAmount);
+  if (typeof rawAmount === "number") {
+    return Number.isFinite(rawAmount) ? rawAmount : 0;
+  }
+
+  // Handle values like "₹1,200.50", "1,200", "(1200)", or "- 1200" from bank exports.
+  const normalizedAmount = String(rawAmount)
+    .replace(/[₹,$\s]/g, "")
+    .replace(/\((.+)\)/, "-$1")
+    .replace(/[^0-9.-]/g, "");
+  const numericAmount = Number(normalizedAmount);
   return Number.isNaN(numericAmount) ? 0 : numericAmount;
 }
 
-export default function Transactions({ transactions = [] }) {
+export default function Transactions({ transactions = [], isProcessing = false }) {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [categorySearch, setCategorySearch] = useState("");
   const [sortOrder, setSortOrder] = useState("desc");
 
   const categories = Array.from(new Set(transactions.map((row) => getRowCategory(row)))).sort();
 
-  const filteredTransactions = transactions
-    .filter((row) => categoryFilter === "All" || getRowCategory(row) === categoryFilter)
-    .filter((row) => matchesCategorySearch(row, categorySearch))
-    .sort((left, right) => {
-      const leftAmount = getRowAmount(left);
-      const rightAmount = getRowAmount(right);
-      return sortOrder === "asc" ? leftAmount - rightAmount : rightAmount - leftAmount;
-    });
+  const filteredTransactions = useMemo(
+    () =>
+      [...transactions]
+        .filter((row) => categoryFilter === "All" || normalize(getRowCategory(row)) === normalize(categoryFilter))
+        .filter((row) => matchesCategorySearch(row, categorySearch))
+        .sort((left, right) => {
+          const leftAmount = getRowAmount(left);
+          const rightAmount = getRowAmount(right);
+          return sortOrder === "asc" ? leftAmount - rightAmount : rightAmount - leftAmount;
+        }),
+    [transactions, categoryFilter, categorySearch, sortOrder]
+  );
+
+  const showProcessing = isProcessing;
 
   return (
     <div className="rounded-3xl border border-white/10 bg-[#1c1f26] p-5 shadow-lg shadow-black/20">
@@ -69,6 +85,12 @@ export default function Transactions({ transactions = [] }) {
             Filter by category and sort by amount on your uploaded file.
           </p>
         </div>
+        {showProcessing && (
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs text-emerald-100">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-200/30 border-t-emerald-100" />
+            Processing
+          </div>
+        )}
       </div>
 
       <div className="mb-4 grid gap-3 md:grid-cols-2">
@@ -125,7 +147,12 @@ export default function Transactions({ transactions = [] }) {
           <div className="col-span-3">Predicted</div>
         </div>
 
-        {filteredTransactions.length > 0 ? (
+        {showProcessing ? (
+          <div className="flex items-center gap-3 px-4 py-8 text-sm text-slate-300">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-500/40 border-t-slate-200" />
+            Processing data...
+          </div>
+        ) : filteredTransactions.length > 0 ? (
           filteredTransactions.map((transaction) => (
             <div
               key={`${transaction.description}-${transaction.date}`}

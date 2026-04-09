@@ -1,7 +1,7 @@
 import axios from "axios";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-export default function Upload({ apiBase, onUploadComplete }) {
+export default function Upload({ apiBase, onUploadComplete, onProcessingChange }) {
   const [file, setFile] = useState(null);
   const [data, setData] = useState([]);
   const [summary, setSummary] = useState({});
@@ -9,6 +9,56 @@ export default function Upload({ apiBase, onUploadComplete }) {
   const [detectedAmountColumn, setDetectedAmountColumn] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(null);
+  const [uploadPhase, setUploadPhase] = useState("idle");
+  const progressTimerRef = useRef(null);
+  const uploadPhaseRef = useRef("idle");
+
+  const updateUploadPhase = (nextPhase) => {
+    uploadPhaseRef.current = nextPhase;
+    setUploadPhase(nextPhase);
+  };
+
+  const stopProgressSimulation = () => {
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (!loading) {
+      return;
+    }
+
+    // Some browsers don't provide reliable upload totals for large multipart requests.
+    // When simulated transfer reaches 95, move to server-processing phase automatically.
+    if (uploadPhaseRef.current === "uploading" && (uploadProgress ?? 0) >= 95) {
+      updateUploadPhase("processing");
+    }
+  }, [loading, uploadProgress]);
+
+  const startProgressSimulation = () => {
+    if (progressTimerRef.current) {
+      return;
+    }
+
+    progressTimerRef.current = setInterval(() => {
+      setUploadProgress((previous) => {
+        const current = typeof previous === "number" ? previous : 0;
+
+        if (uploadPhaseRef.current === "uploading") {
+          return Math.min(95, current + 1);
+        }
+
+        if (uploadPhaseRef.current === "processing") {
+          return Math.min(99, current + 1);
+        }
+
+        return current;
+      });
+    }, 140);
+  };
 
   const uploadFile = async () => {
     if (!file) {
@@ -19,6 +69,12 @@ export default function Upload({ apiBase, onUploadComplete }) {
     try {
       setLoading(true);
       setError("");
+      setUploadProgress(0);
+      updateUploadPhase("uploading");
+      startProgressSimulation();
+      if (typeof onProcessingChange === "function") {
+        onProcessingChange(true);
+      }
 
       const formData = new FormData();
       formData.append("file", file);
@@ -30,8 +86,27 @@ export default function Upload({ apiBase, onUploadComplete }) {
           headers: {
             "Content-Type": "multipart/form-data",
           },
+          onUploadProgress: (progressEvent) => {
+            if (!progressEvent.total) {
+              return;
+            }
+
+            // Keep transfer progress capped at 95 until server-side processing finishes.
+            const percent = Math.min(
+              95,
+              Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            );
+            setUploadProgress((previous) => {
+              const current = typeof previous === "number" ? previous : 0;
+              return Math.max(current, percent);
+            });
+          },
         }
       );
+
+      stopProgressSimulation();
+      setUploadProgress(100);
+      updateUploadPhase("done");
 
       setData(res.data.rows ?? []);
       setSummary(res.data.summary ?? {});
@@ -42,6 +117,7 @@ export default function Upload({ apiBase, onUploadComplete }) {
         onUploadComplete(res.data);
       }
     } catch (err) {
+      stopProgressSimulation();
       const backendMessage =
         err?.response?.data?.detail ||
         err?.response?.data?.error ||
@@ -49,7 +125,15 @@ export default function Upload({ apiBase, onUploadComplete }) {
         "Upload failed. Check backend.";
       setError(backendMessage);
     } finally {
+      stopProgressSimulation();
       setLoading(false);
+      if (typeof onProcessingChange === "function") {
+        onProcessingChange(false);
+      }
+      setTimeout(() => {
+        setUploadProgress(null);
+        updateUploadPhase("idle");
+      }, 800);
     }
   };
 
@@ -73,6 +157,25 @@ export default function Upload({ apiBase, onUploadComplete }) {
       >
         {loading ? "Uploading..." : "Upload"}
       </button>
+
+      {loading && (
+        <div className="mt-4 rounded-2xl border border-white/10 bg-[#0e1117] p-3">
+          <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
+            <span>
+              {uploadPhase === "processing"
+                ? "Processing on server"
+                : "Upload progress"}
+            </span>
+            <span>{uploadProgress ?? 0}%</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full bg-emerald-400 transition-all duration-150"
+              style={{ width: `${uploadProgress ?? 0}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="mt-4">
         {error && (

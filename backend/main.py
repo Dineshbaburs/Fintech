@@ -29,8 +29,17 @@ app.add_middleware(
 
 
 def load_transactions() -> pd.DataFrame:
+    empty_frame = pd.DataFrame(
+        {
+            "date": pd.Series(dtype="datetime64[ns]"),
+            "amount": pd.Series(dtype="float64"),
+            "description": pd.Series(dtype="object"),
+            "category": pd.Series(dtype="object"),
+        }
+    )
+
     if not DATA_PATH.exists():
-        raise FileNotFoundError(f"Missing data file: {DATA_PATH}")
+        return empty_frame
 
     frame = pd.read_csv(DATA_PATH)
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
@@ -40,7 +49,10 @@ def load_transactions() -> pd.DataFrame:
     return frame
 
 
-def build_validation_model(frame: pd.DataFrame) -> tuple[Pipeline, float]:
+def build_validation_model(frame: pd.DataFrame) -> tuple[Optional[Pipeline], float]:
+    if frame.empty:
+        return None, 0.0
+
     features = frame["description"].str.lower()
     labels = frame["category"]
 
@@ -68,12 +80,15 @@ def build_validation_model(frame: pd.DataFrame) -> tuple[Pipeline, float]:
     return pipeline, float(accuracy)
 
 
-def load_model() -> Pipeline:
+def load_model() -> Optional[Pipeline]:
     if MODEL_PATH.exists():
         with open(MODEL_PATH, "rb") as handle:
             return pickle.load(handle)
 
     fallback_model, _ = build_validation_model(load_transactions())
+    if fallback_model is None:
+        return None
+
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(MODEL_PATH, "wb") as handle:
         pickle.dump(fallback_model, handle)
@@ -95,6 +110,59 @@ def rule_based(description: str) -> Optional[str]:
         if any(keyword in lowered for keyword in keywords):
             return category
     return None
+
+
+def batch_predict_categories(text_series: pd.Series) -> pd.DataFrame:
+    normalized_text = text_series.fillna("").astype(str).str.strip()
+    lowered_text = normalized_text.str.lower()
+
+    predicted_category = pd.Series([None] * len(normalized_text), index=normalized_text.index, dtype="object")
+    prediction_source = pd.Series(["model"] * len(normalized_text), index=normalized_text.index, dtype="object")
+    prediction_confidence = pd.Series([None] * len(normalized_text), index=normalized_text.index, dtype="object")
+
+    rule_map = {
+        "Food": ["swiggy", "zomato", "restaurant", "cafe", "food", "delivery"],
+        "Transport": ["uber", "ola", "cab", "metro", "bus", "ride", "travel"],
+        "Shopping": ["amazon", "amzn", "flipkart", "myntra", "shopping", "purchase"],
+        "Entertainment": ["netflix", "spotify", "prime video", "hotstar", "movie", "entertainment"],
+        "Housing": ["rent", "house rent", "home rent", "lease", "housing"],
+        "Utilities": ["electricity", "water bill", "gas bill", "utility", "power bill", "broadband"],
+    }
+
+    for category, keywords in rule_map.items():
+        regex = "|".join(keywords)
+        mask = lowered_text.str.contains(regex, na=False)
+        unresolved = predicted_category.isna()
+        apply_mask = mask & unresolved
+        if apply_mask.any():
+            predicted_category.loc[apply_mask] = category
+            prediction_source.loc[apply_mask] = "rules"
+            prediction_confidence.loc[apply_mask] = 1.0
+
+    unresolved_mask = predicted_category.isna()
+    if unresolved_mask.any():
+        if model is None:
+            predicted_category.loc[unresolved_mask] = "Others"
+            prediction_source.loc[unresolved_mask] = "fallback"
+            prediction_confidence.loc[unresolved_mask] = None
+        else:
+            model_inputs = normalized_text.loc[unresolved_mask].tolist()
+            model_predictions = model.predict(model_inputs)
+            predicted_category.loc[unresolved_mask] = model_predictions
+
+            if hasattr(model, "predict_proba"):
+                probabilities = model.predict_proba(model_inputs)
+                max_probabilities = probabilities.max(axis=1)
+                prediction_confidence.loc[unresolved_mask] = [float(value) for value in max_probabilities]
+
+    return pd.DataFrame(
+        {
+            "predicted": predicted_category.fillna("Others"),
+            "prediction_source": prediction_source,
+            "prediction_confidence": prediction_confidence,
+        },
+        index=normalized_text.index,
+    )
 
 
 def normalize_column_name(column_name: str) -> str:
@@ -127,6 +195,13 @@ def predict_category(description: str) -> Dict[str, Any]:
             "category": rule_category,
             "source": "rules",
             "confidence": 1.0,
+        }
+
+    if model is None:
+        return {
+            "category": "Others",
+            "source": "fallback",
+            "confidence": None,
         }
 
     predicted = model.predict([cleaned_description])[0]
@@ -175,9 +250,59 @@ def summarize_transactions(frame: pd.DataFrame, accuracy: float) -> Dict[str, An
     average_amount = float(frame["amount"].mean()) if transaction_count else 0.0
 
     category_totals_series = frame.groupby("category")["amount"].sum().sort_values(ascending=False)
-    category_totals = {
-        category: float(amount)
-        for category, amount in category_totals_series.items()
+    category_totals = {category: float(amount) for category, amount in category_totals_series.items()}
+    top_category = next(iter(category_totals), None)
+
+    daily_spend = (
+        frame.assign(day=frame["date"].dt.strftime("%Y-%m-%d"))
+        .groupby("day", as_index=False)["amount"]
+        .sum()
+        .sort_values("day")
+        .to_dict(orient="records")
+    )
+
+    merchant_totals = (
+        frame.groupby("description", as_index=False)["amount"]
+        .sum()
+        .sort_values("amount", ascending=False)
+        .head(5)
+        .to_dict(orient="records")
+    )
+
+    predicted_preview = []
+    for _, row in frame.head(8).iterrows():
+        predicted = predict_category(row["description"])
+        predicted_preview.append(
+            {
+                "date": row["date"].strftime("%Y-%m-%d") if pd.notna(row["date"]) else None,
+                "amount": float(row["amount"]),
+                "description": row["description"],
+                "actual_category": row["category"],
+                "predicted_category": predicted["category"],
+                "source": predicted["source"],
+            }
+        )
+
+    return {
+        "total_spend": total_spend,
+        "transaction_count": transaction_count,
+        "average_amount": average_amount,
+        "model_accuracy": accuracy,
+        "top_category": top_category,
+        "category_totals": category_totals,
+        "daily_spend": daily_spend,
+        "merchant_totals": merchant_totals,
+        "transactions": predicted_preview,
+        "savings_tips": category_tips(category_totals, total_spend),
+        "privacy_note": (
+            "Keep transaction processing local, minimize shared raw descriptors, and strip PII before training or analytics exports."
+        ),
+        "advanced_features": [
+            "Rule-based fallback for noisy merchant names",
+            "Text model trained on labeled transaction descriptions",
+            "Spending distribution and daily trend analytics",
+            "Targeted savings suggestions derived from category concentration",
+        ],
     }
 
 
@@ -231,59 +356,6 @@ def summarize_uploaded_rows(frame: pd.DataFrame) -> Dict[str, Any]:
             "Automatic detection of messy bank CSV headers",
             "Filterable and sortable uploaded transaction preview",
             "Category-based savings guidance",
-        ],
-    }
-    top_category = next(iter(category_totals), None)
-
-    daily_spend = (
-        frame.assign(day=frame["date"].dt.strftime("%Y-%m-%d"))
-        .groupby("day", as_index=False)["amount"]
-        .sum()
-        .sort_values("day")
-        .to_dict(orient="records")
-    )
-
-    merchant_totals = (
-        frame.groupby("description", as_index=False)["amount"]
-        .sum()
-        .sort_values("amount", ascending=False)
-        .head(5)
-        .to_dict(orient="records")
-    )
-
-    predicted_preview = []
-    for _, row in frame.head(8).iterrows():
-        predicted = predict_category(row["description"])
-        predicted_preview.append(
-            {
-                "date": row["date"].strftime("%Y-%m-%d") if pd.notna(row["date"]) else None,
-                "amount": float(row["amount"]),
-                "description": row["description"],
-                "actual_category": row["category"],
-                "predicted_category": predicted["category"],
-                "source": predicted["source"],
-            }
-        )
-
-    return {
-        "total_spend": total_spend,
-        "transaction_count": transaction_count,
-        "average_amount": average_amount,
-        "model_accuracy": accuracy,
-        "top_category": top_category,
-        "category_totals": category_totals,
-        "daily_spend": daily_spend,
-        "merchant_totals": merchant_totals,
-        "transactions": predicted_preview,
-        "savings_tips": category_tips(category_totals, total_spend),
-        "privacy_note": (
-            "Keep transaction processing local, minimize shared raw descriptors, and strip PII before training or analytics exports."
-        ),
-        "advanced_features": [
-            "Rule-based fallback for noisy merchant names",
-            "Text model trained on labeled transaction descriptions",
-            "Spending distribution and daily trend analytics",
-            "Targeted savings suggestions derived from category concentration",
         ],
     }
 
@@ -381,10 +453,10 @@ async def bulk_predict(file: UploadFile = File(...)) -> Dict[str, Any]:
         df["source_text_column"] = text_column
         df["source_amount_column"] = amount_column if amount_column is not None else ""
 
-        predictions = text_values.apply(predict_category)
-        df["predicted"] = predictions.apply(lambda item: item["category"])
-        df["prediction_source"] = predictions.apply(lambda item: item["source"])
-        df["prediction_confidence"] = predictions.apply(lambda item: item["confidence"])
+        predictions = batch_predict_categories(text_values)
+        df["predicted"] = predictions["predicted"]
+        df["prediction_source"] = predictions["prediction_source"]
+        df["prediction_confidence"] = predictions["prediction_confidence"]
 
         analytics = summarize_uploaded_rows(df)
 

@@ -9,6 +9,7 @@ export default function Dashboard() {
   const apiBase = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
   const [analytics, setAnalytics] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [isDataProcessing, setIsDataProcessing] = useState(false);
 
   const handleUploadComplete = (payload) => {
     setAnalytics(payload.analytics ?? payload);
@@ -20,7 +21,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex-1 w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
-      <div className="mb-8 rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,rgba(12,16,24,0.96),rgba(24,29,40,0.9))] p-6 shadow-2xl shadow-black/30 backdrop-blur">
+      <div id="dashboard-section" className="mb-8 rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,rgba(12,16,24,0.96),rgba(24,29,40,0.9))] p-6 shadow-2xl shadow-black/30 backdrop-blur scroll-mt-4 lg:scroll-mt-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-emerald-300/70">
@@ -49,7 +50,14 @@ export default function Dashboard() {
         <SummaryCards summary={analytics} loading={!analytics} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.35fr_0.85fr]">
+      {isDataProcessing && (
+        <div className="mb-6 flex items-center gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-amber-200/30 border-t-amber-100" />
+          Processing uploaded data. Please wait...
+        </div>
+      )}
+
+      <div id="analytics-section" className="grid gap-6 xl:grid-cols-[1.35fr_0.85fr] scroll-mt-4 lg:scroll-mt-8">
         <ExpenseChart
           categoryTotals={analytics?.category_totals}
           loading={!analytics}
@@ -85,10 +93,16 @@ export default function Dashboard() {
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-        <Transactions transactions={transactions} />
+        <Transactions transactions={transactions} isProcessing={isDataProcessing} />
 
         <div className="space-y-6">
-          <Upload apiBase={apiBase} onUploadComplete={handleUploadComplete} />
+          <div id="upload-section" className="scroll-mt-4 lg:scroll-mt-8">
+            <Upload
+              apiBase={apiBase}
+              onUploadComplete={handleUploadComplete}
+              onProcessingChange={setIsDataProcessing}
+            />
+          </div>
 
           <div className="rounded-3xl border border-white/10 bg-[#1c1f26] p-5 shadow-lg shadow-black/20">
             <h2 className="text-lg font-semibold text-white">Ethics and privacy</h2>
