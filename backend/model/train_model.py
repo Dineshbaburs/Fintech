@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import pickle
 
@@ -6,8 +7,15 @@ from sklearn.pipeline import Pipeline
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 
+# Get current file location
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Build correct paths
+data_path = os.path.join(BASE_DIR, "..", "..", "data", "transactions.csv")
+model_path = os.path.join(BASE_DIR, "..", "..", "models", "model.pkl")
+
 # Load dataset
-df = pd.read_csv("../../data/transactions.csv")
+df = pd.read_csv(data_path)
 
 # Features & labels
 X = df["description"].str.lower()
@@ -32,5 +40,7 @@ accuracy = model.score(X_test, y_test)
 print("Model Accuracy:", accuracy)
 
 # Save model
-with open("../../models/model.pkl", "wb") as f:
+os.makedirs(os.path.dirname(model_path), exist_ok=True)
+
+with open(model_path, "wb") as f:
     pickle.dump(model, f)
