@@ -8,10 +8,19 @@ export default function Dashboard() {
     <div className="flex-1 p-6 w-full">
       <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
 
-      <SummaryCards />
-      <ExpenseChart />
-      <Predict />
-      <Upload /> {/* 🔥 MAIN FEATURE */}
+      <div className="mb-6">
+        <SummaryCards />
+      </div>
+
+      <div className="mb-6">
+        <ExpenseChart />
+      </div>
+
+      <div className="mb-6">
+        <Predict />
+      </div>
+
+      <Upload />
     </div>
   );
 }
