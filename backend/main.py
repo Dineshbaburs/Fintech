@@ -186,6 +186,34 @@ def find_column(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
     return None
 
 
+def parse_amount_series(raw_series: pd.Series) -> pd.Series:
+    cleaned = raw_series.fillna("").astype(str).str.strip()
+    lowered = cleaned.str.lower()
+
+    # Remove common currency formatting while preserving sign information.
+    numeric_text = (
+        cleaned
+        .str.replace("₹", "", regex=False)
+        .str.replace("$", "", regex=False)
+        .str.replace(",", "", regex=False)
+        .str.replace(r"[^0-9.\-()]", "", regex=True)
+    )
+
+    numeric_values = pd.to_numeric(
+        numeric_text.str.replace("(", "", regex=False).str.replace(")", "", regex=False),
+        errors="coerce",
+    ).fillna(0.0)
+
+    parentheses_negative = cleaned.str.match(r"^\s*\(.*\)\s*$", na=False)
+    debit_negative = lowered.str.contains(r"\bdr\b|\bdebit\b", regex=True, na=False)
+    credit_positive = lowered.str.contains(r"\bcr\b|\bcredit\b", regex=True, na=False)
+
+    values = numeric_values.copy()
+    values[parentheses_negative | debit_negative] = -values[parentheses_negative | debit_negative].abs()
+    values[credit_positive] = values[credit_positive].abs()
+    return values
+
+
 def predict_category(description: str) -> Dict[str, Any]:
     cleaned_description = str(description).strip()
     rule_category = rule_based(cleaned_description)
@@ -444,7 +472,7 @@ async def bulk_predict(file: UploadFile = File(...)) -> Dict[str, Any]:
             raise HTTPException(status_code=400, detail=f"Column '{text_column}' does not contain any usable transaction text.")
 
         if amount_column is not None:
-            amount_values = pd.to_numeric(df[amount_column], errors="coerce").fillna(0)
+            amount_values = parse_amount_series(df[amount_column])
         else:
             amount_values = pd.Series([0] * len(df), index=df.index, dtype="float64")
 

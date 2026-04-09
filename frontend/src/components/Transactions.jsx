@@ -84,6 +84,9 @@ export default function Transactions({ transactions = [], isProcessing = false }
           <p className="mt-1 text-sm text-slate-400">
             Filter by category and sort by amount on your uploaded file.
           </p>
+          <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">
+            Showing {filteredTransactions.length} of {transactions.length}
+          </p>
         </div>
         {showProcessing && (
           <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs text-emerald-100">
