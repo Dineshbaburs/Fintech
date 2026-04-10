@@ -2,6 +2,7 @@ import axios from "axios";
 import { useEffect, useRef, useState } from "react";
 
 export default function Upload({ apiBase, onUploadComplete, onProcessingChange }) {
+  const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
   const [file, setFile] = useState(null);
   const [data, setData] = useState([]);
   const [summary, setSummary] = useState({});
@@ -11,8 +12,10 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
   const [error, setError] = useState("");
   const [uploadProgress, setUploadProgress] = useState(null);
   const [uploadPhase, setUploadPhase] = useState("idle");
+  const [jobStatus, setJobStatus] = useState("");
   const progressTimerRef = useRef(null);
   const uploadPhaseRef = useRef("idle");
+  const jobPollRef = useRef(null);
 
   const updateUploadPhase = (nextPhase) => {
     uploadPhaseRef.current = nextPhase;
@@ -23,6 +26,13 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
     if (progressTimerRef.current) {
       clearInterval(progressTimerRef.current);
       progressTimerRef.current = null;
+    }
+  };
+
+  const stopJobPolling = () => {
+    if (jobPollRef.current) {
+      clearInterval(jobPollRef.current);
+      jobPollRef.current = null;
     }
   };
 
@@ -62,13 +72,29 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
 
   const uploadFile = async () => {
     if (!file) {
-      alert("Please select a file first!");
+      setError("Please select a CSV file first.");
+      return;
+    }
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setError("Only CSV files are supported.");
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setError("File is too large. Please upload a CSV under 5 MB.");
       return;
     }
 
     try {
+      const clientJobId =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
       setLoading(true);
       setError("");
+      setJobStatus("Preparing job...");
       setUploadProgress(0);
       updateUploadPhase("uploading");
       startProgressSimulation();
@@ -79,8 +105,30 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
       const formData = new FormData();
       formData.append("file", file);
 
+      stopJobPolling();
+      jobPollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await axios.get(`${apiBase}/jobs/${encodeURIComponent(clientJobId)}`);
+          const statusData = statusRes.data;
+          if (typeof statusData.progress === "number") {
+            setUploadProgress((previous) => {
+              const current = typeof previous === "number" ? previous : 0;
+              return Math.max(current, statusData.progress);
+            });
+          }
+
+          if (statusData.status === "running" && (statusData.progress ?? 0) >= 60) {
+            updateUploadPhase("processing");
+          }
+
+          setJobStatus(statusData.message || "Processing...");
+        } catch {
+          // Ignore polling errors while upload request is still in-flight.
+        }
+      }, 700);
+
       const res = await axios.post(
-        `${apiBase}/bulk_predict`,
+        `${apiBase}/bulk_predict?job_id=${encodeURIComponent(clientJobId)}`,
         formData,
         {
           headers: {
@@ -105,8 +153,10 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
       );
 
       stopProgressSimulation();
+      stopJobPolling();
       setUploadProgress(100);
       updateUploadPhase("done");
+      setJobStatus("Completed");
 
       setData(res.data.rows ?? []);
       setSummary(res.data.summary ?? {});
@@ -118,6 +168,7 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
       }
     } catch (err) {
       stopProgressSimulation();
+      stopJobPolling();
       const backendMessage =
         err?.response?.data?.detail ||
         err?.response?.data?.error ||
@@ -126,6 +177,7 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
       setError(backendMessage);
     } finally {
       stopProgressSimulation();
+      stopJobPolling();
       setLoading(false);
       if (typeof onProcessingChange === "function") {
         onProcessingChange(false);
@@ -133,34 +185,61 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
       setTimeout(() => {
         setUploadProgress(null);
         updateUploadPhase("idle");
+        setJobStatus("");
       }, 800);
     }
   };
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-[#1c1f26] p-5 shadow-lg shadow-black/20">
-      <h2 className="text-lg font-semibold text-white">Upload CSV</h2>
-      <p className="mt-1 text-sm text-slate-400">
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-lg shadow-slate-200/60">
+      <h2 className="text-lg font-semibold text-slate-900">Upload CSV</h2>
+      <p className="mt-1 text-sm text-slate-500">
         Select a bank export and the backend will auto-detect the text column.
       </p>
 
       <input
         type="file"
-        className="mb-3 mt-4 block w-full text-sm text-slate-300 file:mr-4 file:rounded-full file:border-0 file:bg-emerald-500 file:px-4 file:py-2 file:font-medium file:text-slate-950 hover:file:bg-emerald-400"
-        onChange={(e) => setFile(e.target.files[0])}
+        className="mb-3 mt-4 block w-full text-sm text-slate-600 file:mr-4 file:rounded-full file:border-0 file:bg-emerald-500 file:px-4 file:py-2 file:font-medium file:text-slate-950 hover:file:bg-emerald-400"
+        accept=".csv,text/csv"
+        onChange={(e) => {
+          setFile(e.target.files[0]);
+          setError("");
+        }}
       />
 
-      <button
-        className="rounded-2xl bg-sky-500 px-4 py-2.5 font-medium text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={loading}
-        onClick={uploadFile}
-      >
-        {loading ? "Uploading..." : "Upload"}
-      </button>
+      {file && (
+        <p className="mb-3 text-xs uppercase tracking-[0.2em] text-slate-400">
+          Selected: {file.name} ({Math.ceil(file.size / 1024)} KB)
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="rounded-2xl bg-sky-500 px-4 py-2.5 font-medium text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={loading}
+          onClick={uploadFile}
+        >
+          {loading ? "Uploading..." : "Upload"}
+        </button>
+        <button
+          type="button"
+          className="rounded-2xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm text-slate-700 transition hover:bg-slate-200"
+          onClick={() => {
+            setFile(null);
+            setData([]);
+            setSummary({});
+            setDetectedColumn("");
+            setDetectedAmountColumn("");
+            setError("");
+          }}
+        >
+          Clear upload data
+        </button>
+      </div>
 
       {loading && (
-        <div className="mt-4 rounded-2xl border border-white/10 bg-[#0e1117] p-3">
-          <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-500">
             <span>
               {uploadPhase === "processing"
                 ? "Processing on server"
@@ -168,7 +247,10 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
             </span>
             <span>{uploadProgress ?? 0}%</span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+          {jobStatus && (
+            <p className="mb-2 text-xs text-slate-600">{jobStatus}</p>
+          )}
+          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
             <div
               className="h-full rounded-full bg-emerald-400 transition-all duration-150"
               style={{ width: `${uploadProgress ?? 0}%` }}
@@ -179,7 +261,7 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
 
       <div className="mt-4">
         {error && (
-          <div className="mb-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+          <div className="mb-4 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
           </div>
         )}
@@ -201,7 +283,7 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
             {Object.entries(summary).map(([category, count]) => (
               <span
                 key={category}
-                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200"
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
               >
                 {category}: {count}
               </span>
@@ -213,14 +295,14 @@ export default function Upload({ apiBase, onUploadComplete, onProcessingChange }
           data.slice(0, 5).map((row, i) => (
             <div
               key={`${row.description}-${i}`}
-              className="flex justify-between border-b border-white/10 py-2 text-sm last:border-b-0"
+              className="flex justify-between border-b border-slate-200 py-2 text-sm last:border-b-0"
             >
-              <span className="pr-3 text-slate-200">{row.description}</span>
-              <span className="text-emerald-300">{row.predicted}</span>
+              <span className="pr-3 text-slate-700">{row.description}</span>
+              <span className="text-emerald-700">{row.predicted}</span>
             </div>
           ))
         ) : (
-          <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-slate-400">
+          <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">
             Uploaded predictions will appear here.
           </div>
         )}

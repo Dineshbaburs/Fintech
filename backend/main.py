@@ -1,16 +1,24 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-import pickle
+from uuid import uuid4
 
 import pandas as pd
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
-from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
+
+from model.ml_utils import (
+    batch_predict_categories,
+    find_column,
+    load_or_train_model,
+    load_transactions,
+    parse_amount_series,
+    predict_category,
+    retrain_and_persist_model,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -28,220 +36,24 @@ app.add_middleware(
 )
 
 
-def load_transactions() -> pd.DataFrame:
-    empty_frame = pd.DataFrame(
-        {
-            "date": pd.Series(dtype="datetime64[ns]"),
-            "amount": pd.Series(dtype="float64"),
-            "description": pd.Series(dtype="object"),
-            "category": pd.Series(dtype="object"),
-        }
-    )
+transactions = load_transactions(DATA_PATH)
+model, MODEL_ACCURACY = load_or_train_model(MODEL_PATH, transactions)
 
-    if not DATA_PATH.exists():
-        return empty_frame
-
-    frame = pd.read_csv(DATA_PATH)
-    frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
-    frame["amount"] = pd.to_numeric(frame["amount"], errors="coerce").fillna(0)
-    frame["description"] = frame["description"].fillna("").astype(str)
-    frame["category"] = frame["category"].fillna("Others").astype(str).str.strip()
-    return frame
+JOB_STATUS: Dict[str, Dict[str, Any]] = {}
 
 
-def build_validation_model(frame: pd.DataFrame) -> tuple[Optional[Pipeline], float]:
-    if frame.empty:
-        return None, 0.0
-
-    features = frame["description"].str.lower()
-    labels = frame["category"]
-
-    pipeline = Pipeline(
-        [
-            ("tfidf", TfidfVectorizer(ngram_range=(1, 2))),
-            ("clf", LogisticRegression(max_iter=200)),
-        ]
-    )
-
-    if labels.nunique() < 2 or labels.value_counts().min() < 2:
-        pipeline.fit(features, labels)
-        return pipeline, 1.0
-
-    x_train, x_test, y_train, y_test = train_test_split(
-        features,
-        labels,
-        test_size=0.2,
-        random_state=42,
-        stratify=labels,
-    )
-
-    pipeline.fit(x_train, y_train)
-    accuracy = accuracy_score(y_test, pipeline.predict(x_test))
-    return pipeline, float(accuracy)
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
-def load_model() -> Optional[Pipeline]:
-    if MODEL_PATH.exists():
-        with open(MODEL_PATH, "rb") as handle:
-            return pickle.load(handle)
-
-    fallback_model, _ = build_validation_model(load_transactions())
-    if fallback_model is None:
-        return None
-
-    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(MODEL_PATH, "wb") as handle:
-        pickle.dump(fallback_model, handle)
-    return fallback_model
-
-
-def rule_based(description: str) -> Optional[str]:
-    lowered = description.lower()
-    rule_map = {
-        "Food": ["swiggy", "zomato", "restaurant", "cafe", "food", "delivery"],
-        "Transport": ["uber", "ola", "cab", "metro", "bus", "ride", "travel"],
-        "Shopping": ["amazon", "amzn", "flipkart", "myntra", "shopping", "purchase"],
-        "Entertainment": ["netflix", "spotify", "prime video", "hotstar", "movie", "entertainment"],
-        "Housing": ["rent", "house rent", "home rent", "lease", "housing"],
-        "Utilities": ["electricity", "water bill", "gas bill", "utility", "power bill", "broadband"],
-    }
-
-    for category, keywords in rule_map.items():
-        if any(keyword in lowered for keyword in keywords):
-            return category
-    return None
-
-
-def batch_predict_categories(text_series: pd.Series) -> pd.DataFrame:
-    normalized_text = text_series.fillna("").astype(str).str.strip()
-    lowered_text = normalized_text.str.lower()
-
-    predicted_category = pd.Series([None] * len(normalized_text), index=normalized_text.index, dtype="object")
-    prediction_source = pd.Series(["model"] * len(normalized_text), index=normalized_text.index, dtype="object")
-    prediction_confidence = pd.Series([None] * len(normalized_text), index=normalized_text.index, dtype="object")
-
-    rule_map = {
-        "Food": ["swiggy", "zomato", "restaurant", "cafe", "food", "delivery"],
-        "Transport": ["uber", "ola", "cab", "metro", "bus", "ride", "travel"],
-        "Shopping": ["amazon", "amzn", "flipkart", "myntra", "shopping", "purchase"],
-        "Entertainment": ["netflix", "spotify", "prime video", "hotstar", "movie", "entertainment"],
-        "Housing": ["rent", "house rent", "home rent", "lease", "housing"],
-        "Utilities": ["electricity", "water bill", "gas bill", "utility", "power bill", "broadband"],
-    }
-
-    for category, keywords in rule_map.items():
-        regex = "|".join(keywords)
-        mask = lowered_text.str.contains(regex, na=False)
-        unresolved = predicted_category.isna()
-        apply_mask = mask & unresolved
-        if apply_mask.any():
-            predicted_category.loc[apply_mask] = category
-            prediction_source.loc[apply_mask] = "rules"
-            prediction_confidence.loc[apply_mask] = 1.0
-
-    unresolved_mask = predicted_category.isna()
-    if unresolved_mask.any():
-        if model is None:
-            predicted_category.loc[unresolved_mask] = "Others"
-            prediction_source.loc[unresolved_mask] = "fallback"
-            prediction_confidence.loc[unresolved_mask] = None
-        else:
-            model_inputs = normalized_text.loc[unresolved_mask].tolist()
-            model_predictions = model.predict(model_inputs)
-            predicted_category.loc[unresolved_mask] = model_predictions
-
-            if hasattr(model, "predict_proba"):
-                probabilities = model.predict_proba(model_inputs)
-                max_probabilities = probabilities.max(axis=1)
-                prediction_confidence.loc[unresolved_mask] = [float(value) for value in max_probabilities]
-
-    return pd.DataFrame(
-        {
-            "predicted": predicted_category.fillna("Others"),
-            "prediction_source": prediction_source,
-            "prediction_confidence": prediction_confidence,
-        },
-        index=normalized_text.index,
-    )
-
-
-def normalize_column_name(column_name: str) -> str:
-    return "".join(character for character in str(column_name).strip().lower() if character.isalnum())
-
-
-def find_column(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
-    normalized_lookup = {normalize_column_name(column): column for column in df.columns}
-    for candidate in candidates:
-        normalized_candidate = normalize_column_name(candidate)
-        if normalized_candidate in normalized_lookup:
-            return normalized_lookup[normalized_candidate]
-
-    for column in df.columns:
-        normalized_column = normalize_column_name(column)
-        for candidate in candidates:
-            normalized_candidate = normalize_column_name(candidate)
-            if normalized_candidate in normalized_column or normalized_column in normalized_candidate:
-                return column
-
-    return None
-
-
-def parse_amount_series(raw_series: pd.Series) -> pd.Series:
-    cleaned = raw_series.fillna("").astype(str).str.strip()
-    lowered = cleaned.str.lower()
-
-    # Remove common currency formatting while preserving sign information.
-    numeric_text = (
-        cleaned
-        .str.replace("₹", "", regex=False)
-        .str.replace("$", "", regex=False)
-        .str.replace(",", "", regex=False)
-        .str.replace(r"[^0-9.\-()]", "", regex=True)
-    )
-
-    numeric_values = pd.to_numeric(
-        numeric_text.str.replace("(", "", regex=False).str.replace(")", "", regex=False),
-        errors="coerce",
-    ).fillna(0.0)
-
-    parentheses_negative = cleaned.str.match(r"^\s*\(.*\)\s*$", na=False)
-    debit_negative = lowered.str.contains(r"\bdr\b|\bdebit\b", regex=True, na=False)
-    credit_positive = lowered.str.contains(r"\bcr\b|\bcredit\b", regex=True, na=False)
-
-    values = numeric_values.copy()
-    values[parentheses_negative | debit_negative] = -values[parentheses_negative | debit_negative].abs()
-    values[credit_positive] = values[credit_positive].abs()
-    return values
-
-
-def predict_category(description: str) -> Dict[str, Any]:
-    cleaned_description = str(description).strip()
-    rule_category = rule_based(cleaned_description)
-
-    if rule_category:
-        return {
-            "category": rule_category,
-            "source": "rules",
-            "confidence": 1.0,
-        }
-
-    if model is None:
-        return {
-            "category": "Others",
-            "source": "fallback",
-            "confidence": None,
-        }
-
-    predicted = model.predict([cleaned_description])[0]
-    confidence = None
-    if hasattr(model, "predict_proba"):
-        probabilities = model.predict_proba([cleaned_description])[0]
-        confidence = float(max(probabilities))
-
-    return {
-        "category": predicted,
-        "source": "model",
-        "confidence": confidence,
+def update_job(job_id: str, *, status: str, progress: int, message: str, rows: int = 0) -> None:
+    JOB_STATUS[job_id] = {
+        "job_id": job_id,
+        "status": status,
+        "progress": max(0, min(100, int(progress))),
+        "message": message,
+        "rows": int(rows),
+        "updated_at": now_iso(),
     }
 
 
@@ -252,14 +64,14 @@ def category_tips(category_totals: Dict[str, float], total_spend: float) -> List
     sorted_categories = sorted(category_totals.items(), key=lambda item: item[1], reverse=True)
     top_category, top_amount = sorted_categories[0]
     tips = [
-        f"Your highest spend is {top_category} at ₹{top_amount:,.0f}. Set a weekly cap there first.",
+        f"Your highest spend is {top_category} at INR {top_amount:,.0f}. Set a weekly cap there first.",
     ]
 
     if total_spend > 0:
         share = top_amount / total_spend
         if share >= 0.3:
             tips.append(
-                f"{top_category} accounts for {share:.0%} of spending. A 10% cut could save about ₹{top_amount * 0.1:,.0f}."
+                f"{top_category} is {share:.0%} of spending. A 10% cut could save about INR {top_amount * 0.1:,.0f}."
             )
 
     if "Food" in category_totals:
@@ -270,68 +82,6 @@ def category_tips(category_totals: Dict[str, float], total_spend: float) -> List
         tips.append("Review recurring subscriptions monthly and remove services you did not use.")
 
     return tips[:4]
-
-
-def summarize_transactions(frame: pd.DataFrame, accuracy: float) -> Dict[str, Any]:
-    total_spend = float(frame["amount"].sum())
-    transaction_count = int(len(frame))
-    average_amount = float(frame["amount"].mean()) if transaction_count else 0.0
-
-    category_totals_series = frame.groupby("category")["amount"].sum().sort_values(ascending=False)
-    category_totals = {category: float(amount) for category, amount in category_totals_series.items()}
-    top_category = next(iter(category_totals), None)
-
-    daily_spend = (
-        frame.assign(day=frame["date"].dt.strftime("%Y-%m-%d"))
-        .groupby("day", as_index=False)["amount"]
-        .sum()
-        .sort_values("day")
-        .to_dict(orient="records")
-    )
-
-    merchant_totals = (
-        frame.groupby("description", as_index=False)["amount"]
-        .sum()
-        .sort_values("amount", ascending=False)
-        .head(5)
-        .to_dict(orient="records")
-    )
-
-    predicted_preview = []
-    for _, row in frame.head(8).iterrows():
-        predicted = predict_category(row["description"])
-        predicted_preview.append(
-            {
-                "date": row["date"].strftime("%Y-%m-%d") if pd.notna(row["date"]) else None,
-                "amount": float(row["amount"]),
-                "description": row["description"],
-                "actual_category": row["category"],
-                "predicted_category": predicted["category"],
-                "source": predicted["source"],
-            }
-        )
-
-    return {
-        "total_spend": total_spend,
-        "transaction_count": transaction_count,
-        "average_amount": average_amount,
-        "model_accuracy": accuracy,
-        "top_category": top_category,
-        "category_totals": category_totals,
-        "daily_spend": daily_spend,
-        "merchant_totals": merchant_totals,
-        "transactions": predicted_preview,
-        "savings_tips": category_tips(category_totals, total_spend),
-        "privacy_note": (
-            "Keep transaction processing local, minimize shared raw descriptors, and strip PII before training or analytics exports."
-        ),
-        "advanced_features": [
-            "Rule-based fallback for noisy merchant names",
-            "Text model trained on labeled transaction descriptions",
-            "Spending distribution and daily trend analytics",
-            "Targeted savings suggestions derived from category concentration",
-        ],
-    }
 
 
 def summarize_uploaded_rows(frame: pd.DataFrame) -> Dict[str, Any]:
@@ -388,19 +138,88 @@ def summarize_uploaded_rows(frame: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-transactions = load_transactions()
-model = load_model()
-_, MODEL_ACCURACY = build_validation_model(transactions)
+def summarize_transactions(frame: pd.DataFrame, accuracy: float) -> Dict[str, Any]:
+    total_spend = float(frame["amount"].sum())
+    transaction_count = int(len(frame))
+    average_amount = float(frame["amount"].mean()) if transaction_count else 0.0
+
+    category_totals_series = frame.groupby("category")["amount"].sum().sort_values(ascending=False)
+    category_totals = {category: float(amount) for category, amount in category_totals_series.items()}
+    top_category = next(iter(category_totals), None)
+
+    daily_spend = (
+        frame.assign(day=frame["date"].dt.strftime("%Y-%m-%d"))
+        .groupby("day", as_index=False)["amount"]
+        .sum()
+        .sort_values("day")
+        .to_dict(orient="records")
+    )
+
+    merchant_totals = (
+        frame.groupby("description", as_index=False)["amount"]
+        .sum()
+        .sort_values("amount", ascending=False)
+        .head(5)
+        .to_dict(orient="records")
+    )
+
+    predicted_preview = []
+    for _, row in frame.head(8).iterrows():
+        predicted = predict_category(row["description"], model)
+        predicted_preview.append(
+            {
+                "date": row["date"].strftime("%Y-%m-%d") if pd.notna(row["date"]) else None,
+                "amount": float(row["amount"]),
+                "description": row["description"],
+                "actual_category": row["category"],
+                "predicted_category": predicted["category"],
+                "source": predicted["source"],
+            }
+        )
+
+    return {
+        "total_spend": total_spend,
+        "transaction_count": transaction_count,
+        "average_amount": average_amount,
+        "model_accuracy": accuracy,
+        "top_category": top_category,
+        "category_totals": category_totals,
+        "daily_spend": daily_spend,
+        "merchant_totals": merchant_totals,
+        "transactions": predicted_preview,
+        "savings_tips": category_tips(category_totals, total_spend),
+        "privacy_note": (
+            "Keep transaction processing local, minimize shared raw descriptors, and strip PII before training or analytics exports."
+        ),
+        "advanced_features": [
+            "Rule-based fallback for noisy merchant names",
+            "Text model trained on labeled transaction descriptions",
+            "Spending distribution and daily trend analytics",
+            "Targeted savings suggestions derived from category concentration",
+        ],
+    }
+
+
+def server_snapshot() -> Dict[str, Any]:
+    active_jobs = [job for job in JOB_STATUS.values() if job.get("status") in {"queued", "running"}]
+    latest_job = max(JOB_STATUS.values(), key=lambda value: value.get("updated_at", ""), default=None)
+
+    return {
+        "status": "ok",
+        "server_time": now_iso(),
+        "transactions": int(len(transactions)),
+        "accuracy": float(MODEL_ACCURACY),
+        "model_loaded": model is not None,
+        "active_jobs": len(active_jobs),
+        "latest_job": latest_job,
+    }
 
 
 @app.get("/health")
 def health() -> Dict[str, Any]:
-    return {
-        "status": "ok",
-        "transactions": int(len(transactions)),
-        "accuracy": MODEL_ACCURACY,
-        "categories": sorted(transactions["category"].unique().tolist()),
-    }
+    response = server_snapshot()
+    response["categories"] = sorted(transactions["category"].unique().tolist()) if not transactions.empty else []
+    return response
 
 
 @app.get("/dashboard")
@@ -414,16 +233,57 @@ def predict(data: Dict[str, Any]) -> Dict[str, Any]:
     if not str(description).strip():
         raise HTTPException(status_code=400, detail="description is required")
 
-    return predict_category(description)
+    return predict_category(description, model)
+
+
+@app.get("/jobs/{job_id}")
+def get_job(job_id: str) -> Dict[str, Any]:
+    job = JOB_STATUS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job
+
+
+@app.post("/retrain")
+def retrain_model() -> Dict[str, Any]:
+    global model, MODEL_ACCURACY, transactions
+
+    transactions = load_transactions(DATA_PATH)
+    model, MODEL_ACCURACY = retrain_and_persist_model(MODEL_PATH, transactions)
+
+    if model is None:
+        raise HTTPException(status_code=400, detail="Unable to train model. Dataset is empty or invalid.")
+
+    return {
+        "status": "retrained",
+        "accuracy": MODEL_ACCURACY,
+        "transactions": int(len(transactions)),
+        "updated_at": now_iso(),
+    }
+
+
+@app.websocket("/ws/realtime")
+async def realtime_socket(websocket: WebSocket) -> None:
+    await websocket.accept()
+    try:
+        while True:
+            await websocket.send_json(server_snapshot())
+            await asyncio.sleep(2)
+    except WebSocketDisconnect:
+        return
 
 
 @app.post("/bulk_predict")
-async def bulk_predict(file: UploadFile = File(...)) -> Dict[str, Any]:
-    try:
-        df = pd.read_csv(file.file)
+async def bulk_predict(file: UploadFile = File(...), job_id: Optional[str] = None) -> Dict[str, Any]:
+    current_job_id = job_id or str(uuid4())
+    update_job(current_job_id, status="queued", progress=5, message="Starting upload processing")
 
+    try:
+        update_job(current_job_id, status="running", progress=15, message="Reading CSV")
+        df = pd.read_csv(file.file)
         df.columns = [str(column).strip() for column in df.columns]
 
+        update_job(current_job_id, status="running", progress=35, message="Detecting columns", rows=len(df))
         text_column = find_column(
             df,
             [
@@ -469,7 +329,7 @@ async def bulk_predict(file: UploadFile = File(...)) -> Dict[str, Any]:
 
         text_values = df[text_column].fillna("").astype(str).str.strip()
         if text_values.eq("").all():
-            raise HTTPException(status_code=400, detail=f"Column '{text_column}' does not contain any usable transaction text.")
+            raise HTTPException(status_code=400, detail=f"Column '{text_column}' has no usable transaction text.")
 
         if amount_column is not None:
             amount_values = parse_amount_series(df[amount_column])
@@ -481,14 +341,18 @@ async def bulk_predict(file: UploadFile = File(...)) -> Dict[str, Any]:
         df["source_text_column"] = text_column
         df["source_amount_column"] = amount_column if amount_column is not None else ""
 
-        predictions = batch_predict_categories(text_values)
+        update_job(current_job_id, status="running", progress=60, message="Running hybrid model predictions", rows=len(df))
+        predictions = batch_predict_categories(text_values, model)
         df["predicted"] = predictions["predicted"]
         df["prediction_source"] = predictions["prediction_source"]
         df["prediction_confidence"] = predictions["prediction_confidence"]
 
+        update_job(current_job_id, status="running", progress=85, message="Building analytics", rows=len(df))
         analytics = summarize_uploaded_rows(df)
 
+        update_job(current_job_id, status="completed", progress=100, message="Completed", rows=len(df))
         return {
+            "job_id": current_job_id,
             "rows": df.to_dict(orient="records"),
             "summary": df["predicted"].value_counts().to_dict(),
             "analytics": analytics,
@@ -496,7 +360,9 @@ async def bulk_predict(file: UploadFile = File(...)) -> Dict[str, Any]:
             "detected_amount_column": amount_column,
         }
 
-    except HTTPException:
+    except HTTPException as exc:
+        update_job(current_job_id, status="failed", progress=100, message=str(exc.detail))
         raise
     except Exception as exc:
+        update_job(current_job_id, status="failed", progress=100, message=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
