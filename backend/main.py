@@ -236,6 +236,159 @@ def predict(data: Dict[str, Any]) -> Dict[str, Any]:
     return predict_category(description, model)
 
 
+@app.post("/ai_chat")
+def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
+    global model, MODEL_ACCURACY, transactions
+
+    message = str(data.get("message", "")).strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    history = data.get("history", [])
+    history = history if isinstance(history, list) else []
+    provided_analytics = data.get("analytics", {})
+    provided_analytics = provided_analytics if isinstance(provided_analytics, dict) else {}
+
+    lowered = message.lower()
+    dashboard_data = summarize_transactions(transactions, MODEL_ACCURACY) if not transactions.empty else None
+    analytics_context = provided_analytics or dashboard_data or {}
+
+    def build_default_suggestions() -> List[str]:
+        return [
+            "predict: amazon grocery order",
+            "show backend status",
+            "how can I reduce transport spending?",
+            "what is my top spending category?",
+        ]
+
+    if any(token in lowered for token in ["hello", "hi", "hey"]):
+        return {
+            "reply": (
+                "I am ready. I can classify a transaction, explain your spending profile, "
+                "check backend health, and suggest saving actions."
+            ),
+            "suggestions": build_default_suggestions(),
+        }
+
+    if any(token in lowered for token in ["help", "what can you do", "commands"]):
+        return {
+            "reply": (
+                "You can ask me things like:\n"
+                "1. predict: swiggy dinner\n"
+                "2. show backend status\n"
+                "3. what is my top category\n"
+                "4. how to save more on food"
+            ),
+            "suggestions": build_default_suggestions(),
+        }
+
+    if "predict" in lowered:
+        candidate = message
+        if ":" in message:
+            candidate = message.split(":", 1)[1].strip()
+
+        if not candidate.strip() and history:
+            previous_user_messages = [
+                str(item.get("content", "")).strip()
+                for item in history
+                if isinstance(item, dict) and item.get("role") == "user"
+            ]
+            if previous_user_messages:
+                candidate = previous_user_messages[-1]
+
+        if not candidate.strip() or candidate.lower() == "predict":
+            return {
+                "reply": "Please provide a description after predict. Example: predict: uber ride to office",
+                "suggestions": ["predict: netflix monthly subscription", "predict: flipkart order"],
+            }
+
+        result = predict_category(candidate, model)
+        reply = (
+            f"Prediction for '{candidate}': {result['category']} (source: {result['source']}). "
+            + (
+                f"Confidence: {result['confidence'] * 100:.1f}%"
+                if isinstance(result.get("confidence"), (int, float))
+                else "Confidence not available"
+            )
+        )
+        return {
+            "reply": reply,
+            "suggestions": [
+                "predict: uber trip airport",
+                "predict: electricity bill payment",
+                "how can I reduce this category spend?",
+            ],
+        }
+
+    if any(keyword in lowered for keyword in ["health", "status", "backend", "live"]):
+        snapshot = server_snapshot()
+        reply = (
+            f"Backend is {snapshot['status']} with {snapshot['transactions']} training rows. "
+            f"Model accuracy is {(snapshot['accuracy'] * 100):.1f}% and active jobs are {snapshot['active_jobs']}."
+        )
+        return {
+            "reply": reply,
+            "suggestions": ["retrain model", "what is top spending category"],
+        }
+
+    if any(keyword in lowered for keyword in ["retrain", "train model", "refresh model"]):
+        transactions = load_transactions(DATA_PATH)
+        model, MODEL_ACCURACY = retrain_and_persist_model(MODEL_PATH, transactions)
+
+        if model is None:
+            return {
+                "reply": "Retraining could not complete because dataset is empty or invalid.",
+                "suggestions": ["upload a csv", "show backend status"],
+            }
+
+        return {
+            "reply": f"Model retrained successfully. New validation accuracy: {MODEL_ACCURACY * 100:.1f}%.",
+            "suggestions": ["show backend status", "predict: amazon order"],
+        }
+
+    if any(keyword in lowered for keyword in ["top category", "highest spend", "top spend", "spending category"]):
+        top_category = analytics_context.get("top_category") or "N/A"
+        total_spend = float(analytics_context.get("total_spend", 0) or 0)
+        return {
+            "reply": f"Top spending category is {top_category}. Total spend is INR {total_spend:,.0f}.",
+            "suggestions": ["give me savings tips", "show category distribution"],
+        }
+
+    if any(keyword in lowered for keyword in ["tip", "save", "reduce", "budget"]):
+        tips = analytics_context.get("savings_tips", [])
+        if tips:
+            tip_lines = "\n".join([f"- {tip}" for tip in tips[:4]])
+            return {
+                "reply": f"Here are focused saving actions:\n{tip_lines}",
+                "suggestions": ["what is my top category", "predict: swiggy order"],
+            }
+
+        return {
+            "reply": "I need analytics context first. Upload a CSV so I can generate personalized savings tips.",
+            "suggestions": ["upload csv", "show backend status"],
+        }
+
+    if dashboard_data:
+        top_category = dashboard_data.get("top_category") or "N/A"
+        total_spend = dashboard_data.get("total_spend", 0)
+        tips = dashboard_data.get("savings_tips", [])
+        tip_text = tips[0] if tips else "Upload more transactions to generate savings guidance."
+        reply = (
+            f"From your current data, top spend category is {top_category} and total spend is INR {total_spend:,.0f}. "
+            f"Suggestion: {tip_text} Ask me 'predict: <transaction text>' for instant classification."
+        )
+    else:
+        reply = (
+            "I can help with transaction insights, category predictions, and savings tips. "
+            "Try asking: 'predict: uber trip to office' or 'show backend status'."
+        )
+
+    return {
+        "reply": reply,
+        "suggestions": build_default_suggestions(),
+    }
+
+
 @app.get("/jobs/{job_id}")
 def get_job(job_id: str) -> Dict[str, Any]:
     job = JOB_STATUS.get(job_id)
