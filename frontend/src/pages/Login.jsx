@@ -119,6 +119,13 @@ export default function Login({ onLogin, theme = "dark" }) {
 
     const matchedUser = users.find((user) => user.email === normalizedEmail);
     if (!matchedUser) {
+      if (users.length === 0) {
+        saveUsers([{ email: normalizedEmail, password: trimmedPassword }]);
+        setSuccess("First account created. Signing you in...");
+        onLogin(normalizedEmail, rememberMe);
+        return;
+      }
+
       setError("No account found. Please register first.");
       return;
     }

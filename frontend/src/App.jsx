@@ -5,23 +5,11 @@ import Login from "./pages/Login";
 import UploadOnboarding from "./pages/UploadOnboarding";
 
 function App() {
-  const UPLOAD_GATE_KEY = "fintech:initialUploadDone";
   const THEME_KEY = "fintech:theme";
 
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    const localAuth = localStorage.getItem("fintech:isAuthenticated") === "true";
-    const sessionAuth = sessionStorage.getItem("fintech:isAuthenticated") === "true";
-    return localAuth || sessionAuth;
-  });
-  const [activeUser, setActiveUser] = useState(() => {
-    return localStorage.getItem("fintech:user") || sessionStorage.getItem("fintech:user") || "";
-  });
-  const [initialUploadDone, setInitialUploadDone] = useState(() => {
-    return (
-      sessionStorage.getItem(UPLOAD_GATE_KEY) === "true" ||
-      localStorage.getItem(UPLOAD_GATE_KEY) === "true"
-    );
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [activeUser, setActiveUser] = useState("");
+  const [initialUploadDone, setInitialUploadDone] = useState(false);
   const [initialUploadPayload, setInitialUploadPayload] = useState(null);
   const [theme, setTheme] = useState(() => {
     const stored = localStorage.getItem(THEME_KEY);
@@ -34,35 +22,17 @@ function App() {
     localStorage.setItem(THEME_KEY, normalizedTheme);
   };
 
-  const handleLogin = (email, rememberMe = true) => {
-    const storage = rememberMe ? localStorage : sessionStorage;
-    const otherStorage = rememberMe ? sessionStorage : localStorage;
-
-    storage.setItem("fintech:isAuthenticated", "true");
-    storage.setItem("fintech:user", email);
-    otherStorage.removeItem("fintech:isAuthenticated");
-    otherStorage.removeItem("fintech:user");
-
+  const handleLogin = (email) => {
     setActiveUser(email);
     setIsAuthenticated(true);
-    const hasUploadedBefore =
-      sessionStorage.getItem(UPLOAD_GATE_KEY) === "true" ||
-      localStorage.getItem(UPLOAD_GATE_KEY) === "true";
-    setInitialUploadDone(hasUploadedBefore);
+    setInitialUploadDone(false);
     setInitialUploadPayload(null);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("fintech:isAuthenticated");
-    localStorage.removeItem("fintech:user");
-    sessionStorage.removeItem("fintech:isAuthenticated");
-    sessionStorage.removeItem("fintech:user");
     setActiveUser("");
     setIsAuthenticated(false);
-    setInitialUploadDone(
-      sessionStorage.getItem(UPLOAD_GATE_KEY) === "true" ||
-        localStorage.getItem(UPLOAD_GATE_KEY) === "true"
-    );
+    setInitialUploadDone(false);
     setInitialUploadPayload(null);
   };
 
@@ -77,8 +47,6 @@ function App() {
 
     setInitialUploadDone(true);
     setInitialUploadPayload(safePayload);
-    sessionStorage.setItem(UPLOAD_GATE_KEY, "true");
-    localStorage.setItem(UPLOAD_GATE_KEY, "true");
   };
 
   const handleNavigate = (target) => {
@@ -115,11 +83,6 @@ function App() {
     </div>
   );
 
-  const persistedUploadDone =
-    sessionStorage.getItem(UPLOAD_GATE_KEY) === "true" ||
-    localStorage.getItem(UPLOAD_GATE_KEY) === "true";
-  const canOpenDashboard = initialUploadDone || persistedUploadDone;
-
   if (!isAuthenticated) {
     return (
       <div className={`app-shell theme-${theme}`}>
@@ -129,7 +92,7 @@ function App() {
     );
   }
 
-  if (!canOpenDashboard) {
+  if (!initialUploadDone) {
     return (
       <div className={`app-shell theme-${theme}`}>
         {themeToggle}

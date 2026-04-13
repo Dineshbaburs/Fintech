@@ -128,6 +128,13 @@ export default function Upload({
     }
 
     try {
+      await axios.get(`${apiBase}/health`, { timeout: 5000 });
+    } catch {
+      setError("Cannot reach backend server. Start the API at http://127.0.0.1:8000 and try again.");
+      return;
+    }
+
+    try {
       const clientJobId =
         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
@@ -550,34 +557,38 @@ export default function Upload({
       {/* Error & Results Section */}
       <div className="space-y-4">
         {error && (
-          <div className="flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 shadow-[0_12px_24px_-18px_rgba(239,68,68,0.8)]">
-            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-300" />
-            <p className="text-sm text-rose-100">{error}</p>
+          <div className={`flex items-start gap-3 rounded-2xl border px-4 py-3 shadow-[0_12px_24px_-18px_rgba(239,68,68,0.8)] ${
+            isLightTheme ? "border-rose-200 bg-rose-50" : "border-red-500/30 bg-red-500/10"
+          }`}>
+            <AlertCircle className={`mt-0.5 h-5 w-5 flex-shrink-0 ${isLightTheme ? "text-rose-600" : "text-rose-300"}`} />
+            <p className={`text-sm ${isLightTheme ? "text-rose-800" : "text-rose-100"}`}>{error}</p>
           </div>
         )}
 
         {data.length > 0 && (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 shadow-[0_12px_24px_-18px_rgba(16,185,129,0.8)]">
+          <div className={`rounded-2xl border p-4 shadow-[0_12px_24px_-18px_rgba(16,185,129,0.8)] ${
+            isLightTheme ? "border-emerald-200 bg-emerald-50" : "border-emerald-500/30 bg-emerald-500/10"
+          }`}>
             <div className="mb-4 flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-emerald-300" />
-              <h3 className="font-semibold text-emerald-100">Upload Complete!</h3>
+              <CheckCircle className={`h-5 w-5 ${isLightTheme ? "text-emerald-600" : "text-emerald-300"}`} />
+              <h3 className={`font-semibold ${isLightTheme ? "text-emerald-800" : "text-emerald-100"}`}>Upload Complete!</h3>
             </div>
 
             {detectedColumn && (
-              <p className="mb-2 text-xs text-emerald-100">
+              <p className={`mb-2 text-xs ${isLightTheme ? "text-emerald-800" : "text-emerald-100"}`}>
                 <span className="font-medium">Detected column:</span> {detectedColumn}
               </p>
             )}
 
             {detectedAmountColumn && (
-              <p className="mb-3 text-xs text-emerald-100">
+              <p className={`mb-3 text-xs ${isLightTheme ? "text-emerald-800" : "text-emerald-100"}`}>
                 <span className="font-medium">Amount column:</span> {detectedAmountColumn}
               </p>
             )}
 
             {Object.keys(summary).length > 0 && (
               <div className="mb-4">
-                <p className="mb-2 text-xs font-medium text-slate-100">Category Distribution:</p>
+                <p className={`mb-2 text-xs font-medium ${isLightTheme ? "text-slate-800" : "text-slate-100"}`}>Category Distribution:</p>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(summary).map(([category, count]) => (
                     <span
@@ -592,7 +603,7 @@ export default function Upload({
             )}
 
             <div className="border-t border-emerald-300/40 pt-3">
-              <p className="mb-2 text-xs font-medium text-slate-100">Sample Predictions:</p>
+              <p className={`mb-2 text-xs font-medium ${isLightTheme ? "text-slate-800" : "text-slate-100"}`}>Sample Predictions:</p>
               <div className="space-y-2">
                 {data.slice(0, 5).map((row, i) => (
                   <div

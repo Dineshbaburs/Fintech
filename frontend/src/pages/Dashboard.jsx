@@ -265,7 +265,7 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
                   <div className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                     <div className="flex-1">
                       <p className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] ${
-                        isDark
+                        isDarkTheme
                           ? "border border-cyan-400/30 bg-cyan-500/10 text-cyan-200"
                           : "border border-cyan-200 bg-cyan-50 text-cyan-700"
                       }`}>
@@ -274,20 +274,20 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
                       </p>
                       <h1
                         className={`mt-4 bg-clip-text text-4xl font-black leading-tight text-transparent sm:text-5xl ${
-                          isDark
+                          isDarkTheme
                             ? "bg-gradient-to-r from-cyan-100 via-sky-100 to-emerald-100"
                             : "bg-gradient-to-r from-slate-900 via-cyan-900 to-orange-900"
                         }`}
                       >
                         FinData Intelligence Analytics
                       </h1>
-                      <p className={`mt-1 text-sm font-medium ${isDark ? "text-cyan-200/85" : "text-cyan-800/85"}`}>
+                      <p className={`mt-1 text-sm font-medium ${isDarkTheme ? "text-cyan-200/85" : "text-cyan-800/85"}`}>
                         AI-first financial intelligence workspace
                       </p>
-                      <p className={`mt-3 max-w-2xl text-lg leading-relaxed ${isDark ? "text-slate-200" : "text-slate-700"}`}>
+                      <p className={`mt-3 max-w-2xl text-lg leading-relaxed ${isDarkTheme ? "text-slate-200" : "text-slate-700"}`}>
                         Welcome back, <span className="font-semibold text-cyan-700">{firstName}</span>. Your personal AI-powered expense categorization system.
                       </p>
-                      <p className={`mt-2 text-sm ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                      <p className={`mt-2 text-sm ${isDarkTheme ? "text-slate-300" : "text-slate-600"}`}>
                         Upload your transaction CSV, and watch as our machine learning model automatically categorizes your spending patterns.
                       </p>
                     </div>

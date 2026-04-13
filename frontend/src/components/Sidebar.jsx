@@ -61,7 +61,7 @@ export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
               {group.items.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <li key={item.target}>
+                  <li key={`${group.label}-${item.label}`}>
                     <a
                       href={`#${item.target}`}
                       onClick={(event) => {
