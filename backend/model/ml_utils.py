@@ -282,7 +282,11 @@ def predict_category(description: str, model: Optional[Pipeline]) -> Dict[str, A
     return {"category": predicted, "source": "model", "confidence": confidence}
 
 
-def batch_predict_categories(text_series: pd.Series, model: Optional[Pipeline]) -> pd.DataFrame:
+def batch_predict_categories(
+    text_series: pd.Series,
+    model: Optional[Pipeline],
+    chunk_size: int = 5000,
+) -> pd.DataFrame:
     normalized_text = text_series.fillna("").astype(str).str.strip()
     lowered_text = normalized_text.str.lower()
 
@@ -308,13 +312,25 @@ def batch_predict_categories(text_series: pd.Series, model: Optional[Pipeline]) 
             prediction_confidence.loc[unresolved_mask] = None
         else:
             model_inputs = normalized_text.loc[unresolved_mask].tolist()
-            model_predictions = model.predict(model_inputs)
-            predicted_category.loc[unresolved_mask] = model_predictions
+            if chunk_size <= 0:
+                chunk_size = 5000
+
+            predicted_output: List[Any] = []
+            confidence_output: List[Optional[float]] = []
+
+            for start in range(0, len(model_inputs), chunk_size):
+                batch = model_inputs[start : start + chunk_size]
+                batch_predictions = model.predict(batch)
+                predicted_output.extend(batch_predictions)
+
+                if hasattr(model, "predict_proba"):
+                    batch_probabilities = model.predict_proba(batch)
+                    confidence_output.extend([float(value) for value in batch_probabilities.max(axis=1)])
+
+            predicted_category.loc[unresolved_mask] = predicted_output
 
             if hasattr(model, "predict_proba"):
-                probabilities = model.predict_proba(model_inputs)
-                max_probabilities = probabilities.max(axis=1)
-                prediction_confidence.loc[unresolved_mask] = [float(value) for value in max_probabilities]
+                prediction_confidence.loc[unresolved_mask] = confidence_output
 
     return pd.DataFrame(
         {

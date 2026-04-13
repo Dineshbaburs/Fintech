@@ -1,7 +1,7 @@
 import { Home, BarChart2, Upload, MessageSquare, Zap, Settings, TrendingUp, PieChart, Send, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 
-export default function Sidebar({ activeUser, onLogout }) {
+export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const navigateTo = (target) => {
@@ -24,7 +24,7 @@ export default function Sidebar({ activeUser, onLogout }) {
     {
       label: "Tools",
       items: [
-        { label: "Upload Data", icon: Upload, target: "upload-section", color: "text-purple-600" },
+        { label: "Upload New Data", icon: Upload, target: "upload-section", color: "text-purple-600" },
         { label: "AI Chat", icon: MessageSquare, target: "analytics-section", color: "text-pink-600" },
         { label: "Expenses", icon: PieChart, target: "analytics-section", color: "text-orange-600" },
       ],
@@ -156,7 +156,7 @@ export default function Sidebar({ activeUser, onLogout }) {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-slate-200/80 bg-gradient-to-b from-white via-white to-slate-50/30 p-5 shadow-lg backdrop-blur lg:flex">
+      <aside className={`sidebar-shell sticky top-0 hidden h-screen w-72 shrink-0 flex-col p-5 shadow-lg backdrop-blur lg:flex ${theme === "dark" ? "border-r border-slate-700/80 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800/70" : "border-r border-slate-200/80 bg-gradient-to-b from-white via-white to-slate-50/30"}`}>
         <SidebarContent />
       </aside>
 
@@ -178,7 +178,7 @@ export default function Sidebar({ activeUser, onLogout }) {
 
       {/* Sidebar */}
       <div
-        className={`fixed left-0 top-0 z-40 flex h-screen w-72 flex-col border-r border-slate-200/80 bg-gradient-to-b from-white via-white to-slate-50/30 p-5 shadow-lg backdrop-blur transition-transform duration-300 lg:hidden ${
+        className={`sidebar-shell fixed left-0 top-0 z-40 flex h-screen w-72 flex-col p-5 shadow-lg backdrop-blur transition-transform duration-300 lg:hidden ${theme === "dark" ? "border-r border-slate-700/80 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-800/70" : "border-r border-slate-200/80 bg-gradient-to-b from-white via-white to-slate-50/30"} ${
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

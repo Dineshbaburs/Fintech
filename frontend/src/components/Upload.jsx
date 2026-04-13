@@ -18,6 +18,7 @@ export default function Upload({
   onUploadComplete,
   onProcessingChange,
   showHeader = true,
+  theme = "dark",
 }) {
   const MAX_FILE_SIZE_BYTES = 1024 * 1024 * 1024;
   const [file, setFile] = useState(null);
@@ -273,45 +274,59 @@ export default function Upload({
     },
   ];
 
+  const isLightTheme = theme === "light";
+
   return (
-    <div className="relative space-y-6 overflow-hidden rounded-3xl bg-[radial-gradient(circle_at_top_left,_#0f172a_0%,_#0b1324_40%,_#050b18_100%)] p-4 text-slate-100 sm:p-5">
+    <div className={`relative space-y-6 overflow-hidden rounded-3xl p-4 sm:p-5 ${
+      isLightTheme
+        ? "border border-white/80 bg-gradient-to-br from-white via-cyan-50/35 to-emerald-50/30 text-slate-900 shadow-[0_16px_34px_-22px_rgba(15,23,42,0.45)]"
+        : "bg-[radial-gradient(circle_at_top_left,_#0f172a_0%,_#0b1324_40%,_#050b18_100%)] text-slate-100"
+    }`}>
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-40 top-0 h-96 w-96 rounded-full bg-teal-500/25 blur-3xl animate-pulse" />
+        <div className={`absolute -left-40 top-0 h-96 w-96 rounded-full blur-3xl animate-pulse ${isLightTheme ? "bg-teal-300/25" : "bg-teal-500/25"}`} />
         <div
-          className="absolute -right-40 bottom-0 h-96 w-96 rounded-full bg-cyan-500/15 blur-3xl animate-pulse"
+          className={`absolute -right-40 bottom-0 h-96 w-96 rounded-full blur-3xl animate-pulse ${isLightTheme ? "bg-cyan-300/20" : "bg-cyan-500/15"}`}
           style={{ animationDelay: "1s" }}
         />
-        <div className="absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:44px_44px]" />
+        <div className={`absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl ${isLightTheme ? "bg-emerald-300/15" : "bg-emerald-500/10"}`} />
+        <div className={`absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:44px_44px] ${isLightTheme ? "opacity-40" : "opacity-100"}`} />
       </div>
 
       <div className="relative z-10 space-y-6">
 
       {showHeader && (
-        <div className="relative overflow-hidden rounded-3xl border border-slate-700 bg-slate-900/90 p-6 shadow-[0_20px_40px_-24px_rgba(6,182,212,0.5)] backdrop-blur-xl transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_28px_50px_-24px_rgba(6,182,212,0.58)]">
+        <div className={`relative overflow-hidden rounded-3xl p-6 backdrop-blur-xl transition duration-300 hover:-translate-y-0.5 ${
+          isLightTheme
+            ? "border border-cyan-200/60 bg-white/75 shadow-[0_14px_30px_-18px_rgba(14,116,144,0.45)] hover:shadow-[0_20px_36px_-20px_rgba(14,116,144,0.5)]"
+            : "border border-slate-700 bg-slate-900/90 shadow-[0_20px_40px_-24px_rgba(6,182,212,0.5)] hover:shadow-[0_28px_50px_-24px_rgba(6,182,212,0.58)]"
+        }`}>
           <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-cyan-300/20 blur-2xl" />
           <div className="pointer-events-none absolute -left-8 -bottom-8 h-24 w-24 rounded-full bg-emerald-300/20 blur-2xl" />
 
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-semibold uppercase tracking-[0.15em] text-teal-300">
+              <p className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.15em] ${
+                isLightTheme
+                  ? "border border-cyan-200 bg-cyan-50 text-cyan-700"
+                  : "border border-slate-700 bg-slate-800 text-teal-300"
+              }`}>
                 <Sparkles className="h-3.5 w-3.5" />
                 Upload Studio
               </p>
-              <h2 className="mt-3 text-2xl font-bold tracking-tight text-white">Import transaction CSV</h2>
-              <p className="mt-1 text-sm text-slate-200">
+              <h2 className={`mt-3 text-2xl font-bold tracking-tight ${isLightTheme ? "text-slate-900" : "text-white"}`}>Import transaction CSV</h2>
+              <p className={`mt-1 text-sm ${isLightTheme ? "text-slate-600" : "text-slate-200"}`}>
                 Drag your file, validate instantly, and run AI categorization in one flow.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <span className="rounded-full border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200">
+              <span className={`rounded-full px-3 py-1.5 text-xs font-medium ${isLightTheme ? "border border-slate-200 bg-white text-slate-700" : "border border-slate-700 bg-slate-800 text-slate-200"}`}>
                 CSV only
               </span>
-              <span className="rounded-full border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200">
+              <span className={`rounded-full px-3 py-1.5 text-xs font-medium ${isLightTheme ? "border border-slate-200 bg-white text-slate-700" : "border border-slate-700 bg-slate-800 text-slate-200"}`}>
                 Max 1 GB
               </span>
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300">
+              <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium ${isLightTheme ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"}`}>
                 <ShieldCheck className="h-3.5 w-3.5" />
                 Private
               </span>
@@ -328,10 +343,16 @@ export default function Upload({
         onDrop={handleDrop}
         className={`relative overflow-hidden rounded-3xl border-2 border-dashed transition-all duration-300 ${
           dragActive
-            ? "border-cyan-400 bg-slate-900/90 shadow-[0_20px_40px_-24px_rgba(6,182,212,0.5)]"
+            ? isLightTheme
+              ? "border-cyan-400 bg-white/90 shadow-[0_16px_30px_-20px_rgba(6,182,212,0.45)]"
+              : "border-cyan-400 bg-slate-900/90 shadow-[0_20px_40px_-24px_rgba(6,182,212,0.5)]"
             : file
-              ? "border-emerald-500/50 bg-slate-900/90"
-              : "border-slate-700 bg-slate-900/85 hover:border-cyan-300/50 hover:-translate-y-0.5"
+              ? isLightTheme
+                ? "border-emerald-400/60 bg-white/90"
+                : "border-emerald-500/50 bg-slate-900/90"
+              : isLightTheme
+                ? "border-slate-300 bg-white/80 hover:border-cyan-300/70 hover:-translate-y-0.5"
+                : "border-slate-700 bg-slate-900/85 hover:border-cyan-300/50 hover:-translate-y-0.5"
         }`}
       >
         <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-cyan-300/20 blur-2xl" />
@@ -356,9 +377,9 @@ export default function Upload({
                   <FileText className="h-6 w-6 text-emerald-600" />
                 </div>
               </div>
-              <p className="text-sm font-medium text-slate-100">File ready to upload</p>
-              <p className="mt-1 text-xs text-slate-300">{file.name}</p>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className={`text-sm font-medium ${isLightTheme ? "text-slate-900" : "text-slate-100"}`}>File ready to upload</p>
+              <p className={`mt-1 text-xs ${isLightTheme ? "text-slate-600" : "text-slate-300"}`}>{file.name}</p>
+              <p className={`mt-1 text-xs ${isLightTheme ? "text-slate-500" : "text-slate-400"}`}>
                 {formatFileSize(file.size)} • {file.type || "CSV"}
               </p>
               <button
@@ -383,17 +404,17 @@ export default function Upload({
                   />
                 </div>
               </div>
-              <p className="text-sm font-medium text-slate-100">
+              <p className={`text-sm font-medium ${isLightTheme ? "text-slate-900" : "text-slate-100"}`}>
                 Drag and drop your CSV here
               </p>
-              <p className="mt-1 text-xs text-slate-300">or click to select a file</p>
+              <p className={`mt-1 text-xs ${isLightTheme ? "text-slate-600" : "text-slate-300"}`}>or click to select a file</p>
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="mt-4 rounded-xl bg-gradient-to-r from-cyan-600 to-emerald-600 px-5 py-2.5 text-xs font-semibold tracking-wide text-white shadow-lg shadow-cyan-500/30 transition duration-200 hover:-translate-y-0.5 hover:shadow-cyan-400/50 active:scale-[0.98]"
               >
                 Select File
               </button>
-              <p className="mt-3 text-xs text-slate-300">
+              <p className={`mt-3 text-xs ${isLightTheme ? "text-slate-500" : "text-slate-300"}`}>
                 Maximum file size: 1 GB • CSV format only
               </p>
             </>
@@ -431,7 +452,11 @@ export default function Upload({
               setDetectedAmountColumn("");
               setError("");
             }}
-            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-6 py-3 font-medium text-slate-200 transition duration-200 hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-slate-700"
+            className={`flex items-center gap-2 rounded-xl px-6 py-3 font-medium transition duration-200 hover:-translate-y-0.5 ${
+              isLightTheme
+                ? "border border-slate-300 bg-white text-slate-700 hover:border-cyan-300/60 hover:bg-cyan-50"
+                : "border border-slate-700 bg-slate-800 text-slate-200 hover:border-cyan-300/40 hover:bg-slate-700"
+            }`}
           >
             <X className="h-4 w-4" />
             Clear
@@ -439,10 +464,14 @@ export default function Upload({
         )}
       </div>
 
-      <div className="rounded-2xl border border-slate-700 bg-slate-900/90 p-4 shadow-[0_20px_40px_-24px_rgba(6,182,212,0.5)] backdrop-blur-xl transition duration-300 hover:shadow-[0_26px_48px_-24px_rgba(6,182,212,0.58)]">
+      <div className={`rounded-2xl p-4 backdrop-blur-xl transition duration-300 ${
+        isLightTheme
+          ? "border border-slate-200 bg-white/80 shadow-[0_12px_24px_-16px_rgba(14,116,144,0.35)] hover:shadow-[0_18px_30px_-16px_rgba(14,116,144,0.42)]"
+          : "border border-slate-700 bg-slate-900/90 shadow-[0_20px_40px_-24px_rgba(6,182,212,0.5)] hover:shadow-[0_26px_48px_-24px_rgba(6,182,212,0.58)]"
+      }`}>
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-200">AI Pipeline</p>
-          <span className="rounded-full border border-slate-700 bg-slate-800 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-200">
+          <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${isLightTheme ? "text-slate-700" : "text-slate-200"}`}>AI Pipeline</p>
+          <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] ${isLightTheme ? "border border-slate-200 bg-white text-slate-700" : "border border-slate-700 bg-slate-800 text-slate-200"}`}>
             {loading ? "Live" : data.length > 0 ? "Complete" : "Standby"}
           </span>
         </div>
@@ -459,7 +488,9 @@ export default function Upload({
                     ? "border-emerald-300/40 bg-emerald-500/10"
                     : step.active
                       ? "border-cyan-300/40 bg-cyan-500/10"
-                      : "border-slate-700 bg-slate-800"
+                      : isLightTheme
+                        ? "border-slate-200 bg-white"
+                        : "border-slate-700 bg-slate-800"
                 }`}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -473,11 +504,11 @@ export default function Upload({
                             : "text-slate-300"
                       }`}
                     />
-                    <p className="text-xs font-semibold text-white">{step.label}</p>
+                    <p className={`text-xs font-semibold ${isLightTheme ? "text-slate-900" : "text-white"}`}>{step.label}</p>
                   </div>
                   {step.complete && <CheckCircle className="h-4 w-4 text-emerald-300" />}
                 </div>
-                <p className="truncate text-xs text-slate-200">{step.detail}</p>
+                <p className={`truncate text-xs ${isLightTheme ? "text-slate-600" : "text-slate-200"}`}>{step.detail}</p>
               </div>
             );
           })}
@@ -486,21 +517,25 @@ export default function Upload({
 
       {/* Progress Bar */}
       {loading && (
-        <div className="rounded-2xl border border-slate-700 bg-slate-900/90 p-4 shadow-[0_20px_40px_-24px_rgba(16,185,129,0.45)] backdrop-blur-xl transition duration-300 hover:shadow-[0_26px_48px_-24px_rgba(16,185,129,0.5)]">
+        <div className={`rounded-2xl p-4 backdrop-blur-xl transition duration-300 ${
+          isLightTheme
+            ? "border border-emerald-200 bg-white/85 shadow-[0_12px_24px_-16px_rgba(16,185,129,0.35)] hover:shadow-[0_18px_30px_-16px_rgba(16,185,129,0.4)]"
+            : "border border-slate-700 bg-slate-900/90 shadow-[0_20px_40px_-24px_rgba(16,185,129,0.45)] hover:shadow-[0_26px_48px_-24px_rgba(16,185,129,0.5)]"
+        }`}>
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
-              <span className="text-sm font-medium text-white">
+              <span className={`text-sm font-medium ${isLightTheme ? "text-slate-900" : "text-white"}`}>
                 {uploadPhase === "processing" ? "Processing on server..." : "Uploading..."}
               </span>
             </div>
-            <span className="text-xs font-semibold text-slate-200">
+            <span className={`text-xs font-semibold ${isLightTheme ? "text-slate-600" : "text-slate-200"}`}>
               {uploadProgress ?? 0}%
             </span>
           </div>
 
           {jobStatus && (
-            <p className="mb-3 text-xs text-slate-200">{jobStatus}</p>
+            <p className={`mb-3 text-xs ${isLightTheme ? "text-slate-600" : "text-slate-200"}`}>{jobStatus}</p>
           )}
 
           <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-700/80">
@@ -547,7 +582,7 @@ export default function Upload({
                   {Object.entries(summary).map(([category, count]) => (
                     <span
                       key={category}
-                      className="rounded-full border border-emerald-300/40 bg-slate-800 px-3 py-1 text-xs font-medium text-emerald-100"
+                      className={`rounded-full border border-emerald-300/40 px-3 py-1 text-xs font-medium ${isLightTheme ? "bg-white text-emerald-700" : "bg-slate-800 text-emerald-100"}`}
                     >
                       {category}: {count}
                     </span>
@@ -562,10 +597,10 @@ export default function Upload({
                 {data.slice(0, 5).map((row, i) => (
                   <div
                     key={`${row.description}-${i}`}
-                    className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
+                    className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${isLightTheme ? "border border-slate-200 bg-white" : "border border-slate-700 bg-slate-800"}`}
                   >
-                    <span className="text-slate-100">{row.description}</span>
-                    <span className="rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold text-emerald-100">
+                    <span className={isLightTheme ? "text-slate-800" : "text-slate-100"}>{row.description}</span>
+                    <span className={`rounded-full border border-emerald-300/40 px-2.5 py-0.5 text-xs font-semibold ${isLightTheme ? "bg-emerald-50 text-emerald-700" : "bg-emerald-500/20 text-emerald-100"}`}>
                       {row.predicted}
                     </span>
                   </div>
@@ -576,10 +611,10 @@ export default function Upload({
         )}
 
         {!loading && data.length === 0 && !file && (
-          <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/85 px-4 py-8 text-center backdrop-blur-xl transition duration-300 hover:border-cyan-300/40 hover:bg-slate-900">
-            <FileText className="mx-auto mb-2 h-8 w-8 text-slate-300" />
-            <p className="text-sm text-slate-100">Upload a CSV file to get started</p>
-            <p className="mt-1 text-xs text-slate-300">Your category insights will appear instantly after processing.</p>
+          <div className={`rounded-2xl border border-dashed px-4 py-8 text-center backdrop-blur-xl transition duration-300 ${isLightTheme ? "border-slate-300 bg-white/75 hover:border-cyan-300/70 hover:bg-cyan-50/40" : "border-slate-700 bg-slate-900/85 hover:border-cyan-300/40 hover:bg-slate-900"}`}>
+            <FileText className={`mx-auto mb-2 h-8 w-8 ${isLightTheme ? "text-slate-500" : "text-slate-300"}`} />
+            <p className={`text-sm ${isLightTheme ? "text-slate-800" : "text-slate-100"}`}>Upload a CSV file to get started</p>
+            <p className={`mt-1 text-xs ${isLightTheme ? "text-slate-600" : "text-slate-300"}`}>Your category insights will appear instantly after processing.</p>
           </div>
         )}
       </div>

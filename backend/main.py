@@ -582,10 +582,30 @@ async def bulk_predict(file: UploadFile = File(...), job_id: Optional[str] = Non
         df["source_amount_column"] = amount_column if amount_column is not None else ""
 
         update_job(current_job_id, status="running", progress=60, message="Running hybrid model predictions", rows=len(df))
-        predictions = batch_predict_categories(text_values, model)
+        predictions = batch_predict_categories(text_values, model, chunk_size=5000)
         df["predicted"] = predictions["predicted"]
         df["prediction_source"] = predictions["prediction_source"]
         df["prediction_confidence"] = predictions["prediction_confidence"]
+
+        # Treat each upload as the active working dataset so all subsequent views
+        # and inference endpoints reflect newly uploaded data, not older baseline rows.
+        active_frame = df.copy()
+        if "date" in active_frame.columns:
+            active_frame["date"] = pd.to_datetime(active_frame["date"], errors="coerce").fillna(pd.Timestamp.utcnow())
+        else:
+            active_frame["date"] = pd.Timestamp.utcnow()
+
+        transactions = pd.DataFrame(
+            {
+                "date": active_frame["date"],
+                "amount": pd.to_numeric(active_frame["amount"], errors="coerce").fillna(0),
+                "description": active_frame["description"].astype(str),
+                "category": active_frame["predicted"].astype(str),
+            }
+        )
+
+        model, MODEL_ACCURACY, MODEL_EVALUATION = retrain_and_persist_model(MODEL_PATH, transactions)
+        ROBUSTNESS_REPORT = run_robustness_suite(model)
 
         update_job(current_job_id, status="running", progress=85, message="Building analytics", rows=len(df))
         response_frame = df.copy()
@@ -595,25 +615,7 @@ async def bulk_predict(file: UploadFile = File(...), job_id: Optional[str] = Non
         analytics = summarize_uploaded_rows(response_frame)
 
         if PRIVACY_SETTINGS.get("persist_uploaded_rows", False):
-            persist_frame = df.copy()
-            if "date" in persist_frame.columns:
-                persist_frame["date"] = pd.to_datetime(persist_frame["date"], errors="coerce").fillna(pd.Timestamp.utcnow())
-            else:
-                persist_frame["date"] = pd.Timestamp.utcnow()
-
-            append_frame = pd.DataFrame(
-                {
-                    "date": persist_frame["date"],
-                    "amount": pd.to_numeric(persist_frame["amount"], errors="coerce").fillna(0),
-                    "description": persist_frame["description"].astype(str),
-                    "category": persist_frame["predicted"].astype(str),
-                }
-            )
-
-            transactions = pd.concat([transactions, append_frame], ignore_index=True)
             transactions.to_csv(DATA_PATH, index=False)
-            model, MODEL_ACCURACY, MODEL_EVALUATION = retrain_and_persist_model(MODEL_PATH, transactions)
-            ROBUSTNESS_REPORT = run_robustness_suite(model)
 
         update_job(current_job_id, status="completed", progress=100, message="Completed", rows=len(df))
         return {

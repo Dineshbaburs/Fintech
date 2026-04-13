@@ -4,10 +4,34 @@ const currencyFormatter = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 0,
 });
 
+const compactCurrencyFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  notation: "compact",
+  maximumFractionDigits: 2,
+});
+
 function parseAmount(row) {
   const rawAmount = row?.amount ?? row?.transaction_amount ?? row?.value ?? row?.amt ?? 0;
   const numericAmount = Number(rawAmount);
   return Number.isFinite(numericAmount) ? numericAmount : 0;
+}
+
+function formatCurrencyCardValue(amount) {
+  const numericAmount = Number(amount ?? 0);
+  if (!Number.isFinite(numericAmount)) {
+    return { display: "N/A", full: "N/A" };
+  }
+
+  const absoluteAmount = Math.abs(numericAmount);
+  const display = absoluteAmount >= 1_000_000
+    ? compactCurrencyFormatter.format(numericAmount)
+    : currencyFormatter.format(numericAmount);
+
+  return {
+    display,
+    full: currencyFormatter.format(numericAmount),
+  };
 }
 
 export default function SummaryCards({ summary, transactions = [], loading = false }) {
@@ -19,15 +43,24 @@ export default function SummaryCards({ summary, transactions = [], loading = fal
         : [])
     ));
 
+  const totalSpendAmount = Number(summary?.total_spend ?? 0);
+  const averageAmount = Number(summary?.average_amount ?? 0);
+  const largestAmount = Number(largestTransaction ?? 0);
+  const totalSpendValue = formatCurrencyCardValue(totalSpendAmount);
+  const averageValue = formatCurrencyCardValue(averageAmount);
+  const largestValue = formatCurrencyCardValue(largestAmount);
+
   const data = [
     {
       title: "Total Spend",
-      value: loading ? "..." : summary ? currencyFormatter.format(summary?.total_spend ?? 0) : "Upload CSV",
+      value: loading ? "..." : summary ? totalSpendValue.display : "Upload CSV",
+      fullValue: summary ? totalSpendValue.full : "",
       note: "Current month total",
     },
     {
       title: "Average Transaction",
-      value: loading ? "..." : summary ? currencyFormatter.format(summary?.average_amount ?? 0) : "Upload CSV",
+      value: loading ? "..." : summary ? averageValue.display : "Upload CSV",
+      fullValue: summary ? averageValue.full : "",
       note: "Average ticket size",
     },
     {
@@ -45,8 +78,9 @@ export default function SummaryCards({ summary, transactions = [], loading = fal
       value: loading
         ? "..."
         : summary
-          ? currencyFormatter.format(largestTransaction)
+          ? largestValue.display
           : "Upload CSV",
+      fullValue: summary ? largestValue.full : "",
       note: "Highest single spend",
     },
   ];
@@ -59,7 +93,17 @@ export default function SummaryCards({ summary, transactions = [], loading = fal
           className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-200/60"
         >
           <h3 className="text-sm text-slate-500">{item.title}</h3>
-          <p className="mt-2 text-3xl font-semibold text-slate-900">{item.value}</p>
+          <p
+            className="mt-2 truncate text-3xl font-semibold text-slate-900"
+            title={item.fullValue || item.value}
+          >
+            {item.value}
+          </p>
+          {item.fullValue && item.fullValue !== item.value && (
+            <p className="mt-1 truncate text-xs text-slate-500" title={item.fullValue}>
+              {item.fullValue}
+            </p>
+          )}
           <p className="mt-2 text-xs uppercase tracking-[0.25em] text-emerald-700/75">
             {item.note}
           </p>
