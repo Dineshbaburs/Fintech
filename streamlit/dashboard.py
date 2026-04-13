@@ -28,8 +28,8 @@ from model.ml_utils import (  # noqa: E402
 )
 
 
-st.set_page_config(page_title="SmartSpend Analytics", page_icon="💡", layout="wide")
-st.title("SmartSpend Intelligence Studio")
+st.set_page_config(page_title="FinData Intelligence Analytics", page_icon="💡", layout="wide")
+st.title("FinData Intelligence Studio")
 st.caption("Real analytics + working ML predictions for transaction data.")
 
 
@@ -99,7 +99,7 @@ def infer_upload_columns(df: pd.DataFrame):
 
 
 base_df = load_base_data()
-model, model_accuracy = load_model_resource(base_df)
+model, model_accuracy, model_eval = load_model_resource(base_df)
 
 if base_df.empty:
     st.warning("No base transactions found at data/transactions.csv. Upload data below to run predictions.")
@@ -126,6 +126,20 @@ metric_cols[1].metric("Average transaction", f"INR {average_amount:,.0f}")
 metric_cols[2].metric("Transactions", f"{len(base_df)}")
 metric_cols[3].metric("Top category", category_totals_series.index[0] if not category_totals_series.empty else "N/A")
 metric_cols[4].metric("Model accuracy", f"{model_accuracy * 100:.1f}%")
+
+with st.expander("Detailed model evaluation"):
+    st.write(
+        {
+            "precision_macro": round(float(model_eval.get("precision_macro", 0.0)), 4),
+            "recall_macro": round(float(model_eval.get("recall_macro", 0.0)), 4),
+            "f1_macro": round(float(model_eval.get("f1_macro", 0.0)), 4),
+            "evaluation_mode": model_eval.get("evaluation_mode"),
+            "sample_count": model_eval.get("sample_count", 0),
+        }
+    )
+
+    if model_eval.get("class_metrics"):
+        st.dataframe(pd.DataFrame(model_eval["class_metrics"]), use_container_width=True)
 
 left_col, right_col = st.columns([1.4, 1])
 

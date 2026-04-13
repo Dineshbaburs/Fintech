@@ -8,7 +8,7 @@ import pickle
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_fscore_support
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
@@ -21,6 +21,71 @@ RULE_MAP: Dict[str, List[str]] = {
     "Housing": ["rent", "house rent", "home rent", "lease", "housing"],
     "Utilities": ["electricity", "water bill", "gas bill", "utility", "power bill", "broadband"],
 }
+
+
+ROBUSTNESS_CASES: List[Dict[str, str]] = [
+    {"text": "SWIGGY#Order_982", "expected": "Food"},
+    {"text": "Uber Trip @ Night", "expected": "Transport"},
+    {"text": "AmaZon mkpl purchase", "expected": "Shopping"},
+    {"text": "N3tflix sub renewal", "expected": "Entertainment"},
+    {"text": "house-rent transfer", "expected": "Housing"},
+    {"text": "electricitybill payment", "expected": "Utilities"},
+]
+
+
+def empty_evaluation_metrics() -> Dict[str, Any]:
+    return {
+        "evaluation_mode": "unavailable",
+        "accuracy": 0.0,
+        "precision_macro": 0.0,
+        "recall_macro": 0.0,
+        "f1_macro": 0.0,
+        "labels": [],
+        "confusion_matrix": [],
+        "class_metrics": [],
+        "sample_count": 0,
+    }
+
+
+def build_evaluation_metrics(
+    y_true: pd.Series,
+    y_pred: pd.Series,
+    labels: List[str],
+    mode: str,
+) -> Dict[str, Any]:
+    if y_true.empty:
+        return empty_evaluation_metrics()
+
+    precision, recall, f1, support = precision_recall_fscore_support(
+        y_true,
+        y_pred,
+        labels=labels,
+        zero_division=0,
+    )
+
+    class_metrics = []
+    for index, label in enumerate(labels):
+        class_metrics.append(
+            {
+                "label": label,
+                "precision": float(precision[index]),
+                "recall": float(recall[index]),
+                "f1": float(f1[index]),
+                "support": int(support[index]),
+            }
+        )
+
+    return {
+        "evaluation_mode": mode,
+        "accuracy": float(accuracy_score(y_true, y_pred)),
+        "precision_macro": float(precision.mean()) if len(precision) else 0.0,
+        "recall_macro": float(recall.mean()) if len(recall) else 0.0,
+        "f1_macro": float(f1.mean()) if len(f1) else 0.0,
+        "labels": labels,
+        "confusion_matrix": confusion_matrix(y_true, y_pred, labels=labels).tolist(),
+        "class_metrics": class_metrics,
+        "sample_count": int(len(y_true)),
+    }
 
 
 def seed_transactions() -> pd.DataFrame:
@@ -72,9 +137,9 @@ def load_transactions(data_path: Path) -> pd.DataFrame:
     return frame
 
 
-def build_validation_model(frame: pd.DataFrame) -> Tuple[Optional[Pipeline], float]:
+def build_validation_model(frame: pd.DataFrame) -> Tuple[Optional[Pipeline], float, Dict[str, Any]]:
     if frame.empty:
-        return None, 0.0
+        return None, 0.0, empty_evaluation_metrics()
 
     features = frame["description"].str.lower()
     labels = frame["category"]
@@ -88,13 +153,17 @@ def build_validation_model(frame: pd.DataFrame) -> Tuple[Optional[Pipeline], flo
 
     if labels.nunique() < 2 or labels.value_counts().min() < 2:
         pipeline.fit(features, labels)
-        return pipeline, 1.0
+        predicted = pd.Series(pipeline.predict(features), index=labels.index)
+        metrics = build_evaluation_metrics(labels, predicted, sorted(labels.unique().tolist()), "train_only")
+        return pipeline, float(metrics["accuracy"]), metrics
 
     class_count = int(labels.nunique())
     suggested_test_rows = max(class_count, int(round(len(frame) * 0.2)))
     if suggested_test_rows >= len(frame):
         pipeline.fit(features, labels)
-        return pipeline, 1.0
+        predicted = pd.Series(pipeline.predict(features), index=labels.index)
+        metrics = build_evaluation_metrics(labels, predicted, sorted(labels.unique().tolist()), "train_only")
+        return pipeline, float(metrics["accuracy"]), metrics
 
     x_train, x_test, y_train, y_test = train_test_split(
         features,
@@ -105,36 +174,37 @@ def build_validation_model(frame: pd.DataFrame) -> Tuple[Optional[Pipeline], flo
     )
 
     pipeline.fit(x_train, y_train)
-    accuracy = accuracy_score(y_test, pipeline.predict(x_test))
-    return pipeline, float(accuracy)
+    y_pred = pd.Series(pipeline.predict(x_test), index=y_test.index)
+    metrics = build_evaluation_metrics(y_test, y_pred, sorted(labels.unique().tolist()), "holdout")
+    return pipeline, float(metrics["accuracy"]), metrics
 
 
-def load_or_train_model(model_path: Path, training_frame: pd.DataFrame) -> Tuple[Optional[Pipeline], float]:
+def load_or_train_model(model_path: Path, training_frame: pd.DataFrame) -> Tuple[Optional[Pipeline], float, Dict[str, Any]]:
     if model_path.exists():
         with model_path.open("rb") as handle:
             loaded = pickle.load(handle)
-        _, validation_accuracy = build_validation_model(training_frame)
-        return loaded, validation_accuracy
+        _, validation_accuracy, metrics = build_validation_model(training_frame)
+        return loaded, validation_accuracy, metrics
 
-    model, accuracy = build_validation_model(training_frame)
+    model, accuracy, metrics = build_validation_model(training_frame)
     if model is None:
-        return None, 0.0
+        return None, 0.0, empty_evaluation_metrics()
 
     model_path.parent.mkdir(parents=True, exist_ok=True)
     with model_path.open("wb") as handle:
         pickle.dump(model, handle)
-    return model, accuracy
+    return model, accuracy, metrics
 
 
-def retrain_and_persist_model(model_path: Path, training_frame: pd.DataFrame) -> Tuple[Optional[Pipeline], float]:
-    model, accuracy = build_validation_model(training_frame)
+def retrain_and_persist_model(model_path: Path, training_frame: pd.DataFrame) -> Tuple[Optional[Pipeline], float, Dict[str, Any]]:
+    model, accuracy, metrics = build_validation_model(training_frame)
     if model is None:
-        return None, 0.0
+        return None, 0.0, empty_evaluation_metrics()
 
     model_path.parent.mkdir(parents=True, exist_ok=True)
     with model_path.open("wb") as handle:
         pickle.dump(model, handle)
-    return model, accuracy
+    return model, accuracy, metrics
 
 
 def normalize_column_name(column_name: str) -> str:
@@ -254,3 +324,46 @@ def batch_predict_categories(text_series: pd.Series, model: Optional[Pipeline]) 
         },
         index=normalized_text.index,
     )
+
+
+def run_robustness_suite(model: Optional[Pipeline]) -> Dict[str, Any]:
+    if model is None:
+        return {
+            "total_cases": len(ROBUSTNESS_CASES),
+            "passed": 0,
+            "accuracy": 0.0,
+            "cases": [
+                {
+                    "text": case["text"],
+                    "expected": case["expected"],
+                    "predicted": "Others",
+                    "source": "fallback",
+                    "pass": False,
+                }
+                for case in ROBUSTNESS_CASES
+            ],
+        }
+
+    results = []
+    passed = 0
+    for case in ROBUSTNESS_CASES:
+        predicted = predict_category(case["text"], model)
+        is_pass = predicted["category"] == case["expected"]
+        passed += int(is_pass)
+        results.append(
+            {
+                "text": case["text"],
+                "expected": case["expected"],
+                "predicted": predicted["category"],
+                "source": predicted.get("source"),
+                "pass": is_pass,
+            }
+        )
+
+    total_cases = len(ROBUSTNESS_CASES)
+    return {
+        "total_cases": total_cases,
+        "passed": passed,
+        "accuracy": float(passed / total_cases) if total_cases else 0.0,
+        "cases": results,
+    }

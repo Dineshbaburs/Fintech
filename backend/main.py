@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -18,6 +19,7 @@ from model.ml_utils import (
     parse_amount_series,
     predict_category,
     retrain_and_persist_model,
+    run_robustness_suite,
 )
 
 
@@ -37,7 +39,14 @@ app.add_middleware(
 
 
 transactions = load_transactions(DATA_PATH)
-model, MODEL_ACCURACY = load_or_train_model(MODEL_PATH, transactions)
+model, MODEL_ACCURACY, MODEL_EVALUATION = load_or_train_model(MODEL_PATH, transactions)
+ROBUSTNESS_REPORT = run_robustness_suite(model)
+
+PRIVACY_SETTINGS: Dict[str, bool] = {
+    "anonymize_descriptions": False,
+    "persist_uploaded_rows": False,
+    "retain_job_history": False,
+}
 
 JOB_STATUS: Dict[str, Dict[str, Any]] = {}
 
@@ -55,6 +64,37 @@ def update_job(job_id: str, *, status: str, progress: int, message: str, rows: i
         "rows": int(rows),
         "updated_at": now_iso(),
     }
+
+    if not PRIVACY_SETTINGS.get("retain_job_history", False) and status in {"completed", "failed"}:
+        keys_to_remove = [
+            key
+            for key, value in JOB_STATUS.items()
+            if key != job_id and value.get("status") in {"completed", "failed"}
+        ]
+        for key in keys_to_remove:
+            JOB_STATUS.pop(key, None)
+
+
+def anonymize_text(value: str) -> str:
+    if not value:
+        return ""
+
+    tokens = re.split(r"(\s+)", str(value).strip())
+    masked_tokens = []
+    for token in tokens:
+        if token.isspace() or token == "":
+            masked_tokens.append(token)
+            continue
+
+        alnum_count = sum(character.isalnum() for character in token)
+        if alnum_count <= 2:
+            masked_tokens.append("*" * len(token))
+            continue
+
+        first_char = token[0]
+        masked_tokens.append(first_char + "*" * (len(token) - 1))
+
+    return "".join(masked_tokens)
 
 
 def category_tips(category_totals: Dict[str, float], total_spend: float) -> List[str]:
@@ -134,11 +174,13 @@ def summarize_uploaded_rows(frame: pd.DataFrame) -> Dict[str, Any]:
             "Automatic detection of messy bank CSV headers",
             "Filterable and sortable uploaded transaction preview",
             "Category-based savings guidance",
+            "Optional privacy controls for anonymization and persistence",
         ],
+        "privacy_controls": PRIVACY_SETTINGS,
     }
 
 
-def summarize_transactions(frame: pd.DataFrame, accuracy: float) -> Dict[str, Any]:
+def summarize_transactions(frame: pd.DataFrame, accuracy: float, evaluation: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     total_spend = float(frame["amount"].sum())
     transaction_count = int(len(frame))
     average_amount = float(frame["amount"].mean()) if transaction_count else 0.0
@@ -182,6 +224,8 @@ def summarize_transactions(frame: pd.DataFrame, accuracy: float) -> Dict[str, An
         "transaction_count": transaction_count,
         "average_amount": average_amount,
         "model_accuracy": accuracy,
+        "model_evaluation": evaluation or MODEL_EVALUATION,
+        "robustness_report": ROBUSTNESS_REPORT,
         "top_category": top_category,
         "category_totals": category_totals,
         "daily_spend": daily_spend,
@@ -196,7 +240,10 @@ def summarize_transactions(frame: pd.DataFrame, accuracy: float) -> Dict[str, An
             "Text model trained on labeled transaction descriptions",
             "Spending distribution and daily trend analytics",
             "Targeted savings suggestions derived from category concentration",
+            "Confusion-matrix and macro-metric evaluation support",
+            "Noisy-descriptor robustness benchmark suite",
         ],
+        "privacy_controls": PRIVACY_SETTINGS,
     }
 
 
@@ -209,6 +256,9 @@ def server_snapshot() -> Dict[str, Any]:
         "server_time": now_iso(),
         "transactions": int(len(transactions)),
         "accuracy": float(MODEL_ACCURACY),
+        "model_evaluation": MODEL_EVALUATION,
+        "robustness_report": ROBUSTNESS_REPORT,
+        "privacy_controls": PRIVACY_SETTINGS,
         "model_loaded": model is not None,
         "active_jobs": len(active_jobs),
         "latest_job": latest_job,
@@ -224,7 +274,38 @@ def health() -> Dict[str, Any]:
 
 @app.get("/dashboard")
 def dashboard() -> Dict[str, Any]:
-    return summarize_transactions(transactions, MODEL_ACCURACY)
+    return summarize_transactions(transactions, MODEL_ACCURACY, MODEL_EVALUATION)
+
+
+@app.get("/privacy/settings")
+def get_privacy_settings() -> Dict[str, Any]:
+    return {
+        "privacy_controls": PRIVACY_SETTINGS,
+        "updated_at": now_iso(),
+    }
+
+
+@app.post("/privacy/settings")
+def update_privacy_settings(data: Dict[str, Any]) -> Dict[str, Any]:
+    global PRIVACY_SETTINGS
+
+    for key in PRIVACY_SETTINGS.keys():
+        if key in data:
+            PRIVACY_SETTINGS[key] = bool(data[key])
+
+    return {
+        "status": "updated",
+        "privacy_controls": PRIVACY_SETTINGS,
+        "updated_at": now_iso(),
+    }
+
+
+@app.get("/model/robustness")
+def model_robustness() -> Dict[str, Any]:
+    return {
+        "robustness_report": ROBUSTNESS_REPORT,
+        "evaluated_at": now_iso(),
+    }
 
 
 @app.post("/predict")
@@ -238,7 +319,7 @@ def predict(data: Dict[str, Any]) -> Dict[str, Any]:
 
 @app.post("/ai_chat")
 def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
-    global model, MODEL_ACCURACY, transactions
+    global model, MODEL_ACCURACY, MODEL_EVALUATION, ROBUSTNESS_REPORT, transactions
 
     message = str(data.get("message", "")).strip()
     if not message:
@@ -250,7 +331,7 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
     provided_analytics = provided_analytics if isinstance(provided_analytics, dict) else {}
 
     lowered = message.lower()
-    dashboard_data = summarize_transactions(transactions, MODEL_ACCURACY) if not transactions.empty else None
+    dashboard_data = summarize_transactions(transactions, MODEL_ACCURACY, MODEL_EVALUATION) if not transactions.empty else None
     analytics_context = provided_analytics or dashboard_data or {}
 
     def build_default_suggestions() -> List[str]:
@@ -333,7 +414,8 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
 
     if any(keyword in lowered for keyword in ["retrain", "train model", "refresh model"]):
         transactions = load_transactions(DATA_PATH)
-        model, MODEL_ACCURACY = retrain_and_persist_model(MODEL_PATH, transactions)
+        model, MODEL_ACCURACY, MODEL_EVALUATION = retrain_and_persist_model(MODEL_PATH, transactions)
+        ROBUSTNESS_REPORT = run_robustness_suite(model)
 
         if model is None:
             return {
@@ -399,10 +481,11 @@ def get_job(job_id: str) -> Dict[str, Any]:
 
 @app.post("/retrain")
 def retrain_model() -> Dict[str, Any]:
-    global model, MODEL_ACCURACY, transactions
+    global model, MODEL_ACCURACY, MODEL_EVALUATION, ROBUSTNESS_REPORT, transactions
 
     transactions = load_transactions(DATA_PATH)
-    model, MODEL_ACCURACY = retrain_and_persist_model(MODEL_PATH, transactions)
+    model, MODEL_ACCURACY, MODEL_EVALUATION = retrain_and_persist_model(MODEL_PATH, transactions)
+    ROBUSTNESS_REPORT = run_robustness_suite(model)
 
     if model is None:
         raise HTTPException(status_code=400, detail="Unable to train model. Dataset is empty or invalid.")
@@ -410,6 +493,8 @@ def retrain_model() -> Dict[str, Any]:
     return {
         "status": "retrained",
         "accuracy": MODEL_ACCURACY,
+        "evaluation": MODEL_EVALUATION,
+        "robustness_report": ROBUSTNESS_REPORT,
         "transactions": int(len(transactions)),
         "updated_at": now_iso(),
     }
@@ -428,6 +513,8 @@ async def realtime_socket(websocket: WebSocket) -> None:
 
 @app.post("/bulk_predict")
 async def bulk_predict(file: UploadFile = File(...), job_id: Optional[str] = None) -> Dict[str, Any]:
+    global transactions, model, MODEL_ACCURACY, MODEL_EVALUATION, ROBUSTNESS_REPORT
+
     current_job_id = job_id or str(uuid4())
     update_job(current_job_id, status="queued", progress=5, message="Starting upload processing")
 
@@ -501,13 +588,38 @@ async def bulk_predict(file: UploadFile = File(...), job_id: Optional[str] = Non
         df["prediction_confidence"] = predictions["prediction_confidence"]
 
         update_job(current_job_id, status="running", progress=85, message="Building analytics", rows=len(df))
-        analytics = summarize_uploaded_rows(df)
+        response_frame = df.copy()
+        if PRIVACY_SETTINGS.get("anonymize_descriptions", False):
+            response_frame["description"] = response_frame["description"].astype(str).apply(anonymize_text)
+
+        analytics = summarize_uploaded_rows(response_frame)
+
+        if PRIVACY_SETTINGS.get("persist_uploaded_rows", False):
+            persist_frame = df.copy()
+            if "date" in persist_frame.columns:
+                persist_frame["date"] = pd.to_datetime(persist_frame["date"], errors="coerce").fillna(pd.Timestamp.utcnow())
+            else:
+                persist_frame["date"] = pd.Timestamp.utcnow()
+
+            append_frame = pd.DataFrame(
+                {
+                    "date": persist_frame["date"],
+                    "amount": pd.to_numeric(persist_frame["amount"], errors="coerce").fillna(0),
+                    "description": persist_frame["description"].astype(str),
+                    "category": persist_frame["predicted"].astype(str),
+                }
+            )
+
+            transactions = pd.concat([transactions, append_frame], ignore_index=True)
+            transactions.to_csv(DATA_PATH, index=False)
+            model, MODEL_ACCURACY, MODEL_EVALUATION = retrain_and_persist_model(MODEL_PATH, transactions)
+            ROBUSTNESS_REPORT = run_robustness_suite(model)
 
         update_job(current_job_id, status="completed", progress=100, message="Completed", rows=len(df))
         return {
             "job_id": current_job_id,
-            "rows": df.to_dict(orient="records"),
-            "summary": df["predicted"].value_counts().to_dict(),
+            "rows": response_frame.to_dict(orient="records"),
+            "summary": response_frame["predicted"].value_counts().to_dict(),
             "analytics": analytics,
             "detected_column": text_column,
             "detected_amount_column": amount_column,

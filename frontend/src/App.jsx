@@ -7,23 +7,10 @@ import UploadOnboarding from "./pages/UploadOnboarding";
 function App() {
   const UPLOAD_GATE_KEY = "fintech:initialUploadDone";
 
-  const getInitialAuthState = () =>
-    localStorage.getItem("fintech:isAuthenticated") === "true" ||
-    sessionStorage.getItem("fintech:isAuthenticated") === "true";
-
-  const getInitialUser = () =>
-    localStorage.getItem("fintech:user") ??
-    sessionStorage.getItem("fintech:user") ??
-    "";
-
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    getInitialAuthState,
-  );
-  const [activeUser, setActiveUser] = useState(
-    getInitialUser,
-  );
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [activeUser, setActiveUser] = useState("");
   const [initialUploadDone, setInitialUploadDone] = useState(
-    () => sessionStorage.getItem(UPLOAD_GATE_KEY) === "true",
+    false,
   );
   const [initialUploadPayload, setInitialUploadPayload] = useState(null);
 
@@ -61,6 +48,13 @@ function App() {
     sessionStorage.setItem(UPLOAD_GATE_KEY, "true");
   };
 
+  const handleNavigate = (target) => {
+    const element = document.getElementById(target);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} />;
   }
@@ -70,8 +64,8 @@ function App() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-transparent text-slate-900 lg:flex-row">
-      <Sidebar activeUser={activeUser} onLogout={handleLogout} />
+    <div className="flex min-h-screen w-full flex-col overflow-hidden bg-transparent text-slate-900 lg:flex-row">
+      <Sidebar activeUser={activeUser} onLogout={handleLogout} onNavigate={handleNavigate} />
       <Dashboard activeUser={activeUser} initialPayload={initialUploadPayload} />
     </div>
   );

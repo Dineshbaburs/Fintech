@@ -8,7 +8,7 @@ export default function AIChat({ apiBase, analytics = null }) {
       id: 1,
       role: "assistant",
       content:
-        "Hi, I am your SmartSpend AI assistant. Ask me for predictions, backend status, or savings insights.",
+        "Hi, I am your FinData Intelligence assistant. Ask me for predictions, backend status, or savings insights.",
     },
   ]);
   const [suggestions, setSuggestions] = useState([

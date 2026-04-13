@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Zap, TrendingUp, Lock, BarChart3, ArrowRight, Eye, EyeOff } from "lucide-react";
 
 export default function Login({ onLogin }) {
   const USERS_STORAGE_KEY = "fintech:users";
@@ -129,162 +130,165 @@ export default function Login({ onLogin }) {
     onLogin(normalizedEmail, rememberMe);
   };
 
-  return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10 text-slate-900">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-32 top-0 h-80 w-80 rounded-full bg-teal-300/30 blur-3xl" />
-        <div className="absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-sky-300/30 blur-3xl" />
-      </div>
-
-      <section className="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white/90 p-7 shadow-xl shadow-slate-300/35 backdrop-blur sm:p-8">
-        <p className="text-xs uppercase tracking-[0.3em] text-teal-700/80">Welcome</p>
-        <h1 className="mt-2 text-3xl font-semibold text-slate-900">Sign in to FinData Intelligence</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Access your expense analytics workspace and upload transaction data securely.
-        </p>
-
-        <button
-          type="button"
-          onClick={ensureDemoAccount}
-          className="mt-4 w-full rounded-xl border border-sky-300/50 bg-sky-50 px-4 py-2.5 text-sm text-sky-800 transition hover:bg-sky-100"
-        >
-          Use demo account
-        </button>
-
-        <div className="mt-6 grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-100 p-1">
-          <button
-            type="button"
-            onClick={() => switchMode("login")}
-            className={`rounded-lg px-3 py-2 text-sm transition ${
-              mode === "login"
-                ? "bg-emerald-400 text-[#0b111c]"
-                : "text-slate-600 hover:bg-white"
-            }`}
-          >
-            Login
-          </button>
-          <button
-            type="button"
-            onClick={() => switchMode("register")}
-            className={`rounded-lg px-3 py-2 text-sm transition ${
-              mode === "register"
-                ? "bg-emerald-400 text-[#0b111c]"
-                : "text-slate-600 hover:bg-white"
-            }`}
-          >
-            Register
-          </button>
+    const features = [
+      { label: "Real-time", icon: Zap, color: "text-amber-400" },
+      { label: "Analytics", icon: TrendingUp, color: "text-emerald-400" },
+      { label: "Secure", icon: Lock, color: "text-sky-400" },
+      { label: "ML-Powered", icon: BarChart3, color: "text-purple-400" },
+    ];
+  
+    return (
+      <main className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_#0f172a_0%,_#0b1324_40%,_#050b18_100%)] text-white">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-40 top-0 h-96 w-96 rounded-full bg-teal-500/25 blur-3xl animate-pulse" />
+          <div className="absolute -right-40 bottom-0 h-96 w-96 rounded-full bg-cyan-500/15 blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
+          <div className="absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/10 blur-3xl" />
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:44px_44px]" />
         </div>
-
-        <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
-          <label className="block text-sm text-slate-700">
-            Email
-            <input
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@company.com"
-              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-400/40 focus:ring-2 focus:ring-emerald-300/30"
-              autoComplete="email"
-            />
-          </label>
-
-          <label className="block text-sm text-slate-700">
-            Password
-            <div className="mt-2 flex items-center rounded-xl border border-slate-300 bg-white px-3 focus-within:border-emerald-400/40 focus-within:ring-2 focus-within:ring-emerald-300/30">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Enter your password"
-                className="w-full bg-transparent px-1 py-2.5 text-sm text-slate-900 outline-none"
-                autoComplete={mode === "register" ? "new-password" : "current-password"}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                className="px-2 text-xs text-slate-500 transition hover:text-slate-800"
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
-            </div>
-          </label>
-
-          {mode === "register" && (
-            <>
+  
+        <div className="relative min-h-screen">
+          <div className="flex min-h-screen flex-col lg:flex-row">
+            <div className="flex flex-col justify-between border-b border-white/10 bg-gradient-to-b from-slate-900/70 to-slate-900/40 px-6 py-10 backdrop-blur-sm sm:px-10 lg:w-1/2 lg:border-b-0 lg:border-r lg:border-white/10 lg:py-12">
               <div>
-                <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
-                  <span>Password strength</span>
-                  <span>{passwordStrength.label || "-"}</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-                  <div
-                    className={`h-full transition-all ${
-                      passwordStrength.score === 1
-                        ? "w-1/3 bg-rose-400"
-                        : passwordStrength.score === 2
-                          ? "w-2/3 bg-amber-400"
-                          : passwordStrength.score === 3
-                            ? "w-full bg-emerald-400"
-                            : "w-0"
-                    }`}
-                  />
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600">
+                    <Zap className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold bg-gradient-to-r from-teal-400 to-emerald-400 bg-clip-text text-transparent">FinData Intelligence</h2>
+                    <p className="text-xs text-slate-400">AI Finance</p>
+                  </div>
                 </div>
               </div>
-
-              <label className="block text-sm text-slate-700">
-                Confirm password
-                <div className="mt-2 flex items-center rounded-xl border border-slate-300 bg-white px-3 focus-within:border-emerald-400/40 focus-within:ring-2 focus-within:ring-emerald-300/30">
-                  <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    placeholder="Re-enter your password"
-                    className="w-full bg-transparent px-1 py-2.5 text-sm text-slate-900 outline-none"
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword((prev) => !prev)}
-                    className="px-2 text-xs text-slate-500 transition hover:text-slate-800"
-                  >
-                    {showConfirmPassword ? "Hide" : "Show"}
-                  </button>
+  
+              <div className="my-12">
+                <h1 className="text-4xl font-black leading-tight sm:text-5xl xl:text-6xl">
+                  Intelligent
+                  <span className="block bg-gradient-to-r from-teal-400 via-emerald-400 to-cyan-400 bg-clip-text text-transparent">Expense</span>
+                  <span className="text-slate-400">Management</span>
+                </h1>
+  
+                <p className="mt-6 text-lg leading-relaxed text-slate-300">
+                  Categorize transactions with AI, analyze spending patterns in real-time, and unlock actionable financial insights instantly.
+                </p>
+  
+                <div className="mt-10 grid grid-cols-2 gap-4">
+                  {features.map((feature) => {
+                    const Icon = feature.icon;
+                    return (
+                      <div key={feature.label} className="group rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 transition hover:border-slate-600 hover:bg-slate-800/50">
+                        <Icon className={`h-6 w-6 ${feature.color} mb-2 transition group-hover:scale-110`} />
+                        <p className="text-sm font-semibold">{feature.label}</p>
+                      </div>
+                    );
+                  })}
                 </div>
-              </label>
-            </>
-          )}
-
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={rememberMe}
-              onChange={(event) => setRememberMe(event.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 bg-white"
-            />
-            Remember me on this device
-          </label>
-
-          {error && (
-            <p className="rounded-xl border border-rose-300/60 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              {error}
-            </p>
-          )}
-
-          {success && (
-            <p className="rounded-xl border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              {success}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            className="w-full rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-semibold text-[#0b111c] transition hover:bg-emerald-300"
-          >
-            {mode === "register" ? "Create account" : "Sign in"}
-          </button>
-        </form>
-      </section>
-    </main>
-  );
-}
+  
+                <div className="mt-12 flex gap-8">
+                  <div>
+                    <p className="text-3xl font-black text-teal-400">100%</p>
+                    <p className="text-xs text-slate-400">Private & Secure</p>
+                  </div>
+                  <div>
+                    <p className="text-3xl font-black text-emerald-400">Real-time</p>
+                    <p className="text-xs text-slate-400">Live Analytics</p>
+                  </div>
+                </div>
+              </div>
+  
+              <div className="text-xs text-slate-500">All processing happens locally. Your data never leaves your device. 🔒</div>
+            </div>
+  
+              <div className="flex flex-col items-center justify-center px-6 py-10 sm:px-10 lg:w-1/2">
+                <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/[0.03] p-6 shadow-[0_20px_40px_-24px_rgba(6,182,212,0.5)] backdrop-blur-xl sm:p-7">
+                <div className="mb-8">
+                  <h3 className="text-3xl font-black">{mode === "login" ? "Welcome back" : "Create account"}</h3>
+                  <p className="mt-2 text-sm text-slate-400">{mode === "login" ? "Sign in to access your analytics dashboard" : "Start your financial intelligence journey"}</p>
+                </div>
+  
+                <button type="button" onClick={ensureDemoAccount} className="mb-6 w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:border-cyan-300/40 hover:bg-cyan-500/10">
+                  <Zap className="h-4 w-4 text-amber-500" />
+                  Try demo account
+                </button>
+  
+                <div className="relative mb-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-700" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="bg-slate-800 px-3 text-xs text-slate-500">or</span>
+                  </div>
+                </div>
+  
+                <div className="mb-6 flex gap-2 rounded-xl border border-white/10 bg-white/5 p-1">
+                  <button onClick={() => switchMode("login")} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${mode === "login" ? "bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-500/30" : "text-slate-400 hover:text-slate-200"}`}>Sign In</button>
+                  <button onClick={() => switchMode("register")} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${mode === "register" ? "bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-lg shadow-teal-500/30" : "text-slate-400 hover:text-slate-200"}`}>Register</button>
+                </div>
+  
+                {error && <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>}
+                {success && <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">{success}</div>}
+  
+                <form className="space-y-4" onSubmit={handleSubmit}>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold text-slate-300">Email</span>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-slate-500 transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 outline-none" />
+                  </label>
+  
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold text-slate-300">Password</span>
+                    <div className="flex items-center rounded-xl border border-white/10 bg-white/5 transition focus-within:border-cyan-400/60 focus-within:ring-2 focus-within:ring-cyan-400/20">
+                      <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" className="w-full bg-transparent px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none" />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="px-3 text-slate-400 hover:text-slate-200">
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </label>
+  
+                  {mode === "register" && (
+                    <>
+                      <div>
+                        <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
+                          <span>Password strength</span>
+                          <span className={passwordStrength.score === 1 ? "text-red-400" : passwordStrength.score === 2 ? "text-amber-400" : "text-emerald-400"}>{passwordStrength.label || "-"}</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-700/80">
+                          <div className={`h-full transition-all ${passwordStrength.score === 1 ? "w-1/3 bg-red-500" : passwordStrength.score === 2 ? "w-2/3 bg-amber-500" : "w-full bg-emerald-500"}`} />
+                        </div>
+                      </div>
+  
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-semibold text-slate-300">Confirm Password</span>
+                        <div className="flex items-center rounded-xl border border-white/10 bg-white/5 transition focus-within:border-cyan-400/60 focus-within:ring-2 focus-within:ring-cyan-400/20">
+                          <input type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter your password" className="w-full bg-transparent px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none" />
+                          <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="px-3 text-slate-400 hover:text-slate-200">
+                            {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </label>
+                    </>
+                  )}
+  
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="h-4 w-4 rounded border-slate-600 bg-slate-700/30 text-teal-600" />
+                    <span className="text-sm text-slate-400">Remember me</span>
+                  </label>
+  
+                  <button type="submit" className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-emerald-600 px-4 py-3 font-semibold text-white shadow-lg shadow-cyan-500/30 transition hover:shadow-cyan-400/50 active:scale-[0.98]">
+                    {mode === "login" ? "Sign In" : "Create Account"}
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </form>
+  
+                <p className="mt-6 text-center text-xs text-slate-500">
+                  {mode === "login" ? "Don't have an account? " : "Already have an account? "}
+                  <button type="button" onClick={() => switchMode(mode === "login" ? "register" : "login")} className="text-teal-400 hover:text-teal-300 font-semibold">
+                    {mode === "login" ? "Register" : "Sign In"}
+                  </button>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }

@@ -15,12 +15,12 @@ export default function UploadOnboarding({ onUploadComplete }) {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-white to-slate-50 px-4 py-10 sm:px-6 lg:px-8">
+    <main className="relative overflow-x-hidden bg-gradient-to-br from-slate-50 via-white to-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       {/* Background Decoration */}
-      <div className="pointer-events-none absolute inset-0">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -left-40 top-0 h-96 w-96 rounded-full bg-teal-300/20 blur-3xl" />
         <div className="absolute -right-32 top-40 h-80 w-80 rounded-full bg-emerald-300/20 blur-3xl" />
-        <div className="absolute -bottom-20 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-sky-300/15 blur-3xl" />
+        <div className="absolute bottom-0 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-sky-300/15 blur-3xl" />
       </div>
 
       <div className="relative mx-auto max-w-2xl">
@@ -33,7 +33,7 @@ export default function UploadOnboarding({ onUploadComplete }) {
           </div>
 
           <p className="text-xs font-semibold uppercase tracking-widest text-teal-600">
-            ✓ Account Setup • Step 2 of 2
+            ✓ Account Setup
           </p>
           <h1 className="mt-3 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-4xl font-bold text-transparent">
             Import Your Data
@@ -99,10 +99,11 @@ export default function UploadOnboarding({ onUploadComplete }) {
           apiBase={apiBase}
           onUploadComplete={handleUploadComplete}
           onProcessingChange={setIsProcessing}
+          showHeader={false}
         />
 
         {/* Footer Info */}
-        <div className="mt-8 text-center">
+        <div className="mt-4 text-center">
           <p className="text-xs text-slate-500">
             Supported formats: CSV files up to 1 GB with transaction descriptions and amounts.
           </p>

@@ -14,7 +14,7 @@ function App() {
 
   return (
     <div style={{ padding: "40px" }}>
-      <h1>SmartSpend AI 💰</h1>
+      <h1>FinData Intelligence 💰</h1>
 
       <input
         placeholder="Enter transaction"
