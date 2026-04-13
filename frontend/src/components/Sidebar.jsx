@@ -120,10 +120,10 @@ export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
 
         <div className="space-y-2">
           <a
-            href="#settings"
+            href="#settings-section"
             onClick={(event) => {
               event.preventDefault();
-              navigateTo("dashboard-section");
+              navigateTo("settings-section");
             }}
             className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700 transition hover:bg-slate-200"
           >

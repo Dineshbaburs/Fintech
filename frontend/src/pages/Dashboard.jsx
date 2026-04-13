@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { Activity, Zap, TrendingUp, Clock, AlertCircle } from "lucide-react";
 
 export default function Dashboard({ activeUser = "", initialPayload = null, theme = "light" }) {
-  const SECTION_IDS = ["dashboard-section", "analytics-section", "upload-section"];
+  const SECTION_IDS = ["dashboard-section", "analytics-section", "upload-section", "settings-section"];
   const apiBase = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
   const [analytics, setAnalytics] = useState(
     () => initialPayload?.analytics ?? initialPayload ?? null,
@@ -32,6 +32,12 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
     return SECTION_IDS.includes(hash) ? hash : "dashboard-section";
   });
   const [activePanel, setActivePanel] = useState("dashboard");
+  const [settings, setSettings] = useState(() => ({
+    emailAlerts: true,
+    weeklyDigest: true,
+    autoRefreshAnalytics: true,
+    rememberFilters: true,
+  }));
   const isDarkTheme = theme === "dark";
 
   const firstName = activeUser ? activeUser.split("@")[0] : "Analyst";
@@ -145,6 +151,8 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
         setActivePanel("dashboard");
       } else if (target === "upload-section") {
         setActivePanel("upload");
+      } else if (target === "settings-section") {
+        setActivePanel("settings");
       } else if (clickedLabel.includes("prediction")) {
         setActivePanel("predictions");
       } else if (clickedLabel.includes("ai chat")) {
@@ -181,6 +189,9 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
   const modelEvaluation = analytics?.model_evaluation ?? serverStatus.model_evaluation;
   const robustnessReport = analytics?.robustness_report ?? serverStatus.robustness_report;
   const privacyControls = analytics?.privacy_controls ?? serverStatus.privacy_controls;
+  const updateSetting = (key) => {
+    setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   return (
     <div className={`dashboard-page flex-1 w-full min-h-screen overflow-y-auto ${isDarkTheme ? "bg-[radial-gradient(circle_at_top_left,_#0f172a_0%,_#0b1324_40%,_#050b18_100%)] text-slate-100" : "bg-[radial-gradient(circle_at_top_left,_#ecfeff_0%,_#f8fafc_38%,_#fff7ed_100%)]"}`}>
@@ -273,7 +284,7 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
                         Intelligent Transaction Analysis
                       </p>
                       <h1
-                        className={`mt-4 bg-clip-text text-4xl font-black leading-tight text-transparent sm:text-5xl ${
+                        className={`dashboard-hero-title mt-4 bg-clip-text text-4xl font-black leading-tight text-transparent sm:text-5xl ${
                           isDarkTheme
                             ? "bg-gradient-to-r from-cyan-100 via-sky-100 to-emerald-100"
                             : "bg-gradient-to-r from-slate-900 via-cyan-900 to-orange-900"
@@ -508,6 +519,89 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
               onProcessingChange={setIsDataProcessing}
               theme={isDarkTheme ? "dark" : "light"}
             />
+          </div>
+        </div>
+      )}
+
+      {activeSection === "settings-section" && (
+        <div id="settings-section" className="px-4 py-6 sm:px-6 lg:px-8 xl:px-10 scroll-mt-4 lg:scroll-mt-8">
+          <div className="mb-6 rounded-3xl border border-white/80 bg-white/80 p-5 shadow-[0_16px_34px_-22px_rgba(15,23,42,0.45)]">
+            <h2 className="text-2xl font-bold text-slate-900">Settings</h2>
+            <p className="mt-1 text-sm text-slate-600">Manage your account preferences and dashboard behavior.</p>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-3xl border border-white/80 bg-white/85 p-6 shadow-[0_16px_34px_-22px_rgba(15,23,42,0.45)]">
+              <h3 className="text-lg font-bold text-slate-900">Account Preferences</h3>
+              <p className="mt-1 text-sm text-slate-600">Toggle app behavior to match your workflow.</p>
+
+              <div className="mt-5 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => updateSetting("emailAlerts")}
+                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-medium text-slate-800">Email alerts for failed uploads</span>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${settings.emailAlerts ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-700"}`}>
+                    {settings.emailAlerts ? "ON" : "OFF"}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => updateSetting("weeklyDigest")}
+                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-medium text-slate-800">Weekly analytics digest</span>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${settings.weeklyDigest ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-700"}`}>
+                    {settings.weeklyDigest ? "ON" : "OFF"}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => updateSetting("autoRefreshAnalytics")}
+                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-medium text-slate-800">Auto-refresh analytics after upload</span>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${settings.autoRefreshAnalytics ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-700"}`}>
+                    {settings.autoRefreshAnalytics ? "ON" : "OFF"}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => updateSetting("rememberFilters")}
+                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-medium text-slate-800">Remember expense filters</span>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${settings.rememberFilters ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-700"}`}>
+                    {settings.rememberFilters ? "ON" : "OFF"}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="rounded-3xl border border-white/80 bg-white/85 p-6 shadow-[0_16px_34px_-22px_rgba(15,23,42,0.45)]">
+                <h3 className="text-lg font-bold text-slate-900">Profile</h3>
+                <p className="mt-3 text-sm text-slate-600">Signed in as</p>
+                <p className="text-base font-semibold text-slate-900">{activeUser || "demo@findata.app"}</p>
+                <p className="mt-3 text-xs text-slate-500">Theme can be switched from the top-right Light/Dark toggle.</p>
+              </div>
+
+              <div className="rounded-3xl border border-white/80 bg-white/85 p-6 shadow-[0_16px_34px_-22px_rgba(15,23,42,0.45)]">
+                <h3 className="text-lg font-bold text-slate-900">Workspace</h3>
+                <p className="mt-2 text-sm text-slate-600">Reset dashboard state and clear the current upload session.</p>
+                <button
+                  type="button"
+                  onClick={clearWorkspace}
+                  className="mt-4 w-full rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
+                >
+                  Clear Current Workspace
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

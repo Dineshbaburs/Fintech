@@ -450,24 +450,45 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
             "suggestions": ["upload csv", "show backend status"],
         }
 
-    if dashboard_data:
-        top_category = dashboard_data.get("top_category") or "N/A"
-        total_spend = dashboard_data.get("total_spend", 0)
-        tips = dashboard_data.get("savings_tips", [])
-        tip_text = tips[0] if tips else "Upload more transactions to generate savings guidance."
-        reply = (
-            f"From your current data, top spend category is {top_category} and total spend is INR {total_spend:,.0f}. "
-            f"Suggestion: {tip_text} Ask me 'predict: <transaction text>' for instant classification."
-        )
-    else:
-        reply = (
-            "I can help with transaction insights, category predictions, and savings tips. "
-            "Try asking: 'predict: uber trip to office' or 'show backend status'."
-        )
+    # Keep responses grounded to supported finance intents instead of returning unrelated summaries.
+    in_scope_keywords = [
+        "predict", "category", "spend", "expense", "saving", "budget", "status", "backend",
+        "health", "model", "accuracy", "upload", "csv", "transaction", "analytics", "tip",
+    ]
+    if not any(keyword in lowered for keyword in in_scope_keywords):
+        return {
+            "reply": (
+                "I can only help with FinData analytics tasks: predictions, spending insights, backend/model status, "
+                "and savings tips based on your uploaded transactions."
+            ),
+            "suggestions": [
+                "predict: uber ride to office",
+                "what is my top spending category?",
+                "show backend status",
+                "give me savings tips",
+            ],
+        }
+
+    if not dashboard_data:
+        return {
+            "reply": (
+                "I need uploaded transaction data to answer that accurately. Please upload a CSV first, "
+                "then ask again."
+            ),
+            "suggestions": ["upload csv", "show backend status", "predict: swiggy order"],
+        }
 
     return {
-        "reply": reply,
-        "suggestions": build_default_suggestions(),
+        "reply": (
+            "I could not map that to a specific command. Ask about top category, total spend, savings tips, "
+            "backend status, or use 'predict: <transaction text>'."
+        ),
+        "suggestions": [
+            "what is my top spending category?",
+            "how can I reduce food spending?",
+            "show backend status",
+            "predict: electricity bill payment",
+        ],
     }
 
 

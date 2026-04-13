@@ -115,6 +115,10 @@ body {
   background-image: linear-gradient(135deg, rgba(30, 41, 59, 0.86), rgba(15, 23, 42, 0.92)) !important;
 }
 
+.theme-dark .dashboard-page .dashboard-hero-title {
+  background-image: linear-gradient(90deg, #ecfeff, #bae6fd, #a7f3d0) !important;
+}
+
 .theme-dark .dashboard-page [class*="bg-emerald-500"],
 .theme-dark .dashboard-page [class*="bg-cyan-500"],
 .theme-dark .dashboard-page [class*="bg-sky-500"],
