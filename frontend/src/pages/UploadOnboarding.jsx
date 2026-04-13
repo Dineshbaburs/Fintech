@@ -4,7 +4,7 @@ import { Upload as UploadIcon, CheckCircle2, Zap } from "lucide-react";
 
 export default function UploadOnboarding({ onUploadComplete, theme = "dark" }) {
   const isDark = theme === "dark";
-  const apiBase = import.meta.env.VITE_API_URL || "http://127.0.0.1:5173/";
+  const apiBase = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
