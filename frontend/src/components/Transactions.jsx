@@ -67,17 +67,31 @@ export default function Transactions({ transactions = [], isProcessing = false }
 
   const categories = Array.from(new Set(transactions.map((row) => getRowCategory(row)))).sort();
 
+  const preparedTransactions = useMemo(
+    () => transactions.map((row, originalIndex) => ({ row, originalIndex, amount: getRowAmount(row) })),
+    [transactions]
+  );
+
   const filteredTransactions = useMemo(
     () =>
-      [...transactions]
-        .filter((row) => categoryFilter === "All" || normalize(getRowCategory(row)) === normalize(categoryFilter))
-        .filter((row) => matchesCategorySearch(row, categorySearch))
+      preparedTransactions
+        .filter(
+          ({ row }) =>
+            categoryFilter === "All" || normalize(getRowCategory(row)) === normalize(categoryFilter)
+        )
+        .filter(({ row }) => matchesCategorySearch(row, categorySearch))
         .sort((left, right) => {
-          const leftAmount = getRowAmount(left);
-          const rightAmount = getRowAmount(right);
-          return sortOrder === "asc" ? leftAmount - rightAmount : rightAmount - leftAmount;
+          const direction = sortOrder === "asc" ? 1 : -1;
+          const amountDiff = (left.amount - right.amount) * direction;
+
+          // Keep ordering deterministic for equal amounts.
+          if (amountDiff !== 0) {
+            return amountDiff;
+          }
+
+          return left.originalIndex - right.originalIndex;
         }),
-    [transactions, categoryFilter, categorySearch, sortOrder]
+    [preparedTransactions, categoryFilter, categorySearch, sortOrder]
   );
 
   const showProcessing = isProcessing;
@@ -88,12 +102,12 @@ export default function Transactions({ transactions = [], isProcessing = false }
     }
 
     const headers = ["Description", "Amount", "Actual", "Predicted", "Source"];
-    const rows = filteredTransactions.map((transaction) => [
-      `"${String(transaction.description ?? "").replaceAll('"', '""')}"`,
-      getRowAmount(transaction),
-      `"${String(transaction.category ?? "").replaceAll('"', '""')}"`,
-      `"${String(getRowCategory(transaction)).replaceAll('"', '""')}"`,
-      `"${String(transaction.prediction_source || transaction.source || "").replaceAll('"', '""')}"`,
+    const rows = filteredTransactions.map(({ row, amount }) => [
+      `"${String(row.description ?? "").replaceAll('"', '""')}"`,
+      amount,
+      `"${String(row.category ?? "").replaceAll('"', '""')}"`,
+      `"${String(getRowCategory(row)).replaceAll('"', '""')}"`,
+      `"${String(row.prediction_source || row.source || "").replaceAll('"', '""')}"`,
     ]);
 
     const csv = [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
@@ -140,7 +154,7 @@ export default function Transactions({ transactions = [], isProcessing = false }
           type="button"
           onClick={exportFilteredTransactions}
           disabled={!filteredTransactions.length}
-          className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs uppercase tracking-[0.15em] text-emerald-100 transition hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs uppercase tracking-[0.15em] text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-emerald-200 disabled:bg-emerald-50/60 disabled:text-emerald-400"
         >
           Export CSV
         </button>
@@ -206,14 +220,14 @@ export default function Transactions({ transactions = [], isProcessing = false }
             Processing data...
           </div>
         ) : filteredTransactions.length > 0 ? (
-          filteredTransactions.map((transaction) => (
+          filteredTransactions.map(({ row: transaction, amount, originalIndex }) => (
             <div
-              key={`${transaction.description}-${transaction.date}`}
+              key={`${transaction.id || transaction.transaction_id || "txn"}-${originalIndex}`}
               className="grid grid-cols-12 gap-3 border-b border-slate-200 px-4 py-3 text-sm last:border-b-0"
             >
               <div className="col-span-4 text-slate-800">{transaction.description}</div>
               <div className="col-span-2 text-right text-slate-700">
-                {currencyFormatter.format(getRowAmount(transaction))}
+                {currencyFormatter.format(amount)}
               </div>
               <div className="col-span-3 text-slate-600">{getRowCategory(transaction)}</div>
               <div className="col-span-3">
