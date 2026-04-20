@@ -644,6 +644,47 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
             "suggestions": ["give me savings tips", "show category distribution"],
         }
 
+    if any(keyword in lowered for keyword in ["how much", "spent", "spend", "expense", "expenses"]):
+        category_totals = analytics_context.get("category_totals", {})
+        if isinstance(category_totals, dict) and category_totals:
+            alias_map = {
+                "food": "Food",
+                "groceries": "Food",
+                "transport": "Transport",
+                "travel": "Transport",
+                "shopping": "Shopping",
+                "entertainment": "Entertainment",
+                "utilities": "Utilities",
+                "housing": "Housing",
+                "rent": "Housing",
+            }
+
+            requested_category = None
+            for category in category_totals.keys():
+                if str(category).lower() in lowered:
+                    requested_category = str(category)
+                    break
+
+            if requested_category is None:
+                for alias, mapped in alias_map.items():
+                    if alias in lowered and mapped in category_totals:
+                        requested_category = mapped
+                        break
+
+            if requested_category is not None:
+                spend_amount = float(category_totals.get(requested_category, 0) or 0)
+                return {
+                    "reply": f"You spent INR {spend_amount:,.0f} on {requested_category}.",
+                    "suggestions": ["how can I reduce this category spend?", "show top 5 expenses"],
+                }
+
+        total_spend = float(analytics_context.get("total_spend", 0) or 0)
+        if total_spend > 0:
+            return {
+                "reply": f"Your total spend is INR {total_spend:,.0f}.",
+                "suggestions": ["what is my top spending category?", "show top 5 expenses"],
+            }
+
     if any(keyword in lowered for keyword in ["tip", "save", "reduce", "budget"]):
         tips = analytics_context.get("savings_tips", [])
         if tips:

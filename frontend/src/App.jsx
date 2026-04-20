@@ -6,6 +6,7 @@ import UploadOnboarding from "./pages/UploadOnboarding";
 
 function App() {
   const THEME_KEY = "fintech:theme";
+  const CHAT_STORAGE_PREFIX = "fintech:chat:";
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeUser, setActiveUser] = useState("");
@@ -23,6 +24,8 @@ function App() {
   };
 
   const handleLogin = (email) => {
+    const normalizedUser = String(email || "guest").toLowerCase();
+    localStorage.removeItem(`${CHAT_STORAGE_PREFIX}${normalizedUser}`);
     setActiveUser(email);
     setIsAuthenticated(true);
     setInitialUploadDone(false);
@@ -30,6 +33,8 @@ function App() {
   };
 
   const handleLogout = () => {
+    const normalizedUser = String(activeUser || "guest").toLowerCase();
+    localStorage.removeItem(`${CHAT_STORAGE_PREFIX}${normalizedUser}`);
     setActiveUser("");
     setIsAuthenticated(false);
     setInitialUploadDone(false);

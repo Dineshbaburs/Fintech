@@ -1,23 +1,81 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 
-export default function AIChat({ apiBase, analytics = null }) {
+const DEFAULT_MESSAGES = [
+  {
+    id: 1,
+    role: "assistant",
+    content:
+      "Hi, I am your FinData Intelligence assistant. Ask me for predictions, backend status, or savings insights.",
+  },
+];
+
+const DEFAULT_SUGGESTIONS = [
+  "predict: uber ride to office",
+  "show backend status",
+  "what is my top spending category?",
+  "show top 5 expenses",
+];
+
+const CHAT_STORAGE_PREFIX = "fintech:chat:";
+
+export default function AIChat({ apiBase, analytics = null, activeUser = "" }) {
+  const storageKey = useMemo(
+    () => `${CHAT_STORAGE_PREFIX}${String(activeUser || "guest").toLowerCase()}`,
+    [activeUser]
+  );
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      role: "assistant",
-      content:
-        "Hi, I am your FinData Intelligence assistant. Ask me for predictions, backend status, or savings insights.",
-    },
-  ]);
-  const [suggestions, setSuggestions] = useState([
-    "predict: uber ride to office",
-    "show backend status",
-    "what is my top spending category?",
-    "show top 5 expenses",
-  ]);
+  const [messages, setMessages] = useState(DEFAULT_MESSAGES);
+  const [suggestions, setSuggestions] = useState(DEFAULT_SUGGESTIONS);
   const [loading, setLoading] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    setIsHydrated(false);
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (!stored) {
+        setMessages(DEFAULT_MESSAGES);
+        setSuggestions(DEFAULT_SUGGESTIONS);
+        setIsHydrated(true);
+        return;
+      }
+
+      const parsed = JSON.parse(stored);
+      const restoredMessages = Array.isArray(parsed?.messages)
+        ? parsed.messages.filter((item) => item && typeof item.content === "string" && typeof item.role === "string")
+        : [];
+      const restoredSuggestions = Array.isArray(parsed?.suggestions)
+        ? parsed.suggestions.filter((item) => typeof item === "string" && item.trim())
+        : [];
+
+      setMessages(restoredMessages.length > 0 ? restoredMessages : DEFAULT_MESSAGES);
+      setSuggestions(restoredSuggestions.length > 0 ? restoredSuggestions.slice(0, 4) : DEFAULT_SUGGESTIONS);
+      setIsHydrated(true);
+    } catch {
+      setMessages(DEFAULT_MESSAGES);
+      setSuggestions(DEFAULT_SUGGESTIONS);
+      setIsHydrated(true);
+    }
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    try {
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          messages: messages.slice(-80),
+          suggestions: suggestions.slice(0, 4),
+        })
+      );
+    } catch {
+      // Ignore browser storage failures and keep in-memory chat state.
+    }
+  }, [storageKey, messages, suggestions, isHydrated]);
 
   const sendMessage = async (overrideText) => {
     const text = (overrideText ?? input).trim();
@@ -30,14 +88,19 @@ export default function AIChat({ apiBase, analytics = null }) {
     setInput("");
     setLoading(true);
 
+    const requestHistory = [
+      ...messages.slice(-7).map((messageItem) => ({
+        role: messageItem.role,
+        content: messageItem.content,
+      })),
+      { role: "user", content: text },
+    ];
+
     try {
       const response = await axios.post(`${apiBase}/ai_chat`, {
         message: text,
         analytics,
-        history: messages.slice(-8).map((messageItem) => ({
-          role: messageItem.role,
-          content: messageItem.content,
-        })),
+        history: requestHistory,
       }, {
         timeout: 15000,
       });

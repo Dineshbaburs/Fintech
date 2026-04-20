@@ -488,7 +488,7 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
 
           {activePanel === "ai-chat" && (
             <div className="mb-8 max-w-3xl">
-              <AIChat apiBase={apiBase} analytics={analytics} />
+              <AIChat apiBase={apiBase} analytics={analytics} activeUser={activeUser} />
             </div>
           )}
 
