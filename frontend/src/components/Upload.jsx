@@ -26,6 +26,8 @@ export default function Upload({
   const [summary, setSummary] = useState({});
   const [detectedColumn, setDetectedColumn] = useState("");
   const [detectedAmountColumn, setDetectedAmountColumn] = useState("");
+  const [detectedAccountColumn, setDetectedAccountColumn] = useState("");
+  const [csvQuality, setCsvQuality] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [uploadProgress, setUploadProgress] = useState(null);
@@ -210,6 +212,8 @@ export default function Upload({
       setSummary(res.data.summary ?? {});
       setDetectedColumn(res.data.detected_column ?? "");
       setDetectedAmountColumn(res.data.detected_amount_column ?? "");
+      setDetectedAccountColumn(res.data.detected_account_column ?? "");
+      setCsvQuality(res.data.csv_quality ?? null);
 
       if (typeof onUploadComplete === "function") {
         onUploadComplete(res.data);
@@ -428,6 +432,35 @@ export default function Upload({
           )}
         </div>
       </div>
+
+      {(detectedColumn || detectedAmountColumn || detectedAccountColumn || csvQuality) && (
+        <div className={`rounded-2xl border p-4 ${isLightTheme ? "border-slate-200 bg-white/80" : "border-slate-700 bg-slate-900/80"}`}>
+          <h3 className={`text-sm font-semibold ${isLightTheme ? "text-slate-900" : "text-slate-100"}`}>CSV quality report</h3>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div className={`rounded-xl border px-3 py-2 text-xs ${isLightTheme ? "border-slate-200 bg-slate-50 text-slate-700" : "border-slate-700 bg-slate-800 text-slate-200"}`}>
+              Text column: {detectedColumn || "Not detected"}
+            </div>
+            <div className={`rounded-xl border px-3 py-2 text-xs ${isLightTheme ? "border-slate-200 bg-slate-50 text-slate-700" : "border-slate-700 bg-slate-800 text-slate-200"}`}>
+              Amount column: {detectedAmountColumn || "Not detected"}
+            </div>
+            <div className={`rounded-xl border px-3 py-2 text-xs ${isLightTheme ? "border-slate-200 bg-slate-50 text-slate-700" : "border-slate-700 bg-slate-800 text-slate-200"}`}>
+              Account column: {detectedAccountColumn || "Default"}
+            </div>
+            <div className={`rounded-xl border px-3 py-2 text-xs ${isLightTheme ? "border-slate-200 bg-slate-50 text-slate-700" : "border-slate-700 bg-slate-800 text-slate-200"}`}>
+              Completeness: {csvQuality?.completeness_score ?? 0}%
+            </div>
+          </div>
+          {Array.isArray(csvQuality?.warnings) && csvQuality.warnings.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {csvQuality.warnings.map((warning) => (
+                <div key={warning} className={`rounded-lg border px-3 py-1.5 text-xs ${isLightTheme ? "border-amber-200 bg-amber-50 text-amber-800" : "border-amber-500/30 bg-amber-500/10 text-amber-300"}`}>
+                  {warning}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-3">

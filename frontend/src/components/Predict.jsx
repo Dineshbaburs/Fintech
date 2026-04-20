@@ -7,6 +7,8 @@ export default function Predict({ apiBase }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [correctionCategory, setCorrectionCategory] = useState("");
+  const [feedbackStatus, setFeedbackStatus] = useState("");
 
   const fetchData = async () => {
     if (!desc.trim()) {
@@ -23,6 +25,8 @@ export default function Predict({ apiBase }) {
       });
 
       setResult(res.data);
+      setCorrectionCategory(res?.data?.category || "");
+      setFeedbackStatus("");
       setHistory((previous) => [
         { description: desc.trim(), ...res.data },
         ...previous,
@@ -31,6 +35,23 @@ export default function Predict({ apiBase }) {
       setError("Prediction failed. Check the backend server and try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const submitCorrection = async () => {
+    if (!result || !desc.trim() || !correctionCategory.trim()) {
+      return;
+    }
+
+    try {
+      await axios.post(`${apiBase}/feedback/correction`, {
+        description: desc.trim(),
+        corrected_category: correctionCategory.trim(),
+        amount: 0,
+      });
+      setFeedbackStatus("Correction saved and model retrained");
+    } catch {
+      setFeedbackStatus("Failed to submit correction");
     }
   };
 
@@ -93,6 +114,34 @@ export default function Predict({ apiBase }) {
               <span className="rounded-full border border-emerald-300 bg-white px-3 py-1">
                 {(result.confidence * 100).toFixed(0)}% confidence
               </span>
+            )}
+          </div>
+          {result.reason && (
+            <p className="mt-2 text-xs text-emerald-800">Why: {result.reason}</p>
+          )}
+          {result.matched_keyword && (
+            <p className="mt-1 text-xs text-emerald-800">Matched keyword: {result.matched_keyword}</p>
+          )}
+
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-white p-3">
+            <p className="text-xs uppercase tracking-[0.2em] text-emerald-700">Correct prediction</p>
+            <div className="mt-2 flex gap-2">
+              <input
+                value={correctionCategory}
+                onChange={(event) => setCorrectionCategory(event.target.value)}
+                placeholder="Enter correct category"
+                className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-900"
+              />
+              <button
+                type="button"
+                onClick={submitCorrection}
+                className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700"
+              >
+                Submit
+              </button>
+            </div>
+            {feedbackStatus && (
+              <p className="mt-2 text-xs text-emerald-700">{feedbackStatus}</p>
             )}
           </div>
         </div>

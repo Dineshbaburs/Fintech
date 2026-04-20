@@ -4,6 +4,7 @@ import Predict from "../components/Predict";
 import AIChat from "../components/AIChat";
 import Upload from "../components/Upload";
 import Transactions from "../components/Transactions";
+import InsightsHub from "../components/InsightsHub";
 import { useEffect, useState } from "react";
 import { Activity, Zap, TrendingUp, Clock, AlertCircle } from "lucide-react";
 
@@ -417,47 +418,51 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
           </div>
 
           {(activePanel === "analytics" || activePanel === "dashboard" || activePanel === "upload") && (
-            <div className="mb-8 grid gap-6 xl:grid-cols-[1.35fr_0.85fr]">
-              <div className="self-start">
+            <div className="mb-8 space-y-6">
+              <div className="grid gap-6 xl:grid-cols-[1.35fr_0.85fr]">
+                <div className="self-start">
                 <ExpenseChart
                   categoryTotals={analytics?.category_totals}
                   loading={!analytics}
                 />
-              </div>
+                </div>
 
-              <div className="space-y-6">
-                <div className="rounded-3xl border border-white/80 bg-white/85 p-6 shadow-[0_16px_34px_-22px_rgba(15,23,42,0.45)] transition-shadow hover:shadow-[0_20px_38px_-20px_rgba(15,23,42,0.5)]">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="rounded-full bg-orange-100 p-2">
-                      <AlertCircle className="h-5 w-5 text-orange-600" />
-                    </div>
-                    <h2 className="text-lg font-bold text-slate-900">Savings Tips</h2>
-                  </div>
-                  <p className="text-sm text-slate-600 mb-4">
-                    AI-powered suggestions based on your spending patterns.
-                  </p>
-
-                  <div className="space-y-2">
-                    {tips.length > 0 ? (
-                      tips.map((tip, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-start gap-3 rounded-xl border border-orange-200/60 bg-gradient-to-r from-orange-50/60 to-white p-3"
-                        >
-                          <span className="mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-orange-200 text-xs font-bold text-orange-700">
-                            ✓
-                          </span>
-                          <p className="text-sm text-slate-700">{tip}</p>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/50 px-4 py-6 text-center">
-                        <p className="text-sm text-slate-500">Upload a CSV to unlock personalized savings tips</p>
+                <div className="space-y-6">
+                  <div className="rounded-3xl border border-white/80 bg-white/85 p-6 shadow-[0_16px_34px_-22px_rgba(15,23,42,0.45)] transition-shadow hover:shadow-[0_20px_38px_-20px_rgba(15,23,42,0.5)]">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="rounded-full bg-orange-100 p-2">
+                        <AlertCircle className="h-5 w-5 text-orange-600" />
                       </div>
-                    )}
+                      <h2 className="text-lg font-bold text-slate-900">Savings Tips</h2>
+                    </div>
+                    <p className="mb-4 text-sm text-slate-600">
+                      AI-powered suggestions based on your spending patterns.
+                    </p>
+
+                    <div className="space-y-2">
+                      {tips.length > 0 ? (
+                        tips.map((tip, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-start gap-3 rounded-xl border border-orange-200/60 bg-gradient-to-r from-orange-50/60 to-white p-3"
+                          >
+                            <span className="mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-orange-200 text-xs font-bold text-orange-700">
+                              ✓
+                            </span>
+                            <p className="text-sm text-slate-700">{tip}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/50 px-4 py-6 text-center">
+                          <p className="text-sm text-slate-500">Upload a CSV to unlock personalized savings tips</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
+
+              <InsightsHub apiBase={apiBase} analytics={analytics} loading={!analytics} />
             </div>
           )}
 

@@ -21,6 +21,18 @@ from model.ml_utils import (
     retrain_and_persist_model,
     run_robustness_suite,
 )
+from model.insights import (
+    build_account_summary,
+    build_budget_status,
+    build_csv_quality_report,
+    build_report_text,
+    compute_health_score,
+    detect_anomalies,
+    detect_duplicates,
+    detect_recurring_transactions,
+    evaluate_goals,
+    forecast_next_month_spend,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -49,6 +61,35 @@ PRIVACY_SETTINGS: Dict[str, bool] = {
 }
 
 JOB_STATUS: Dict[str, Dict[str, Any]] = {}
+
+BUDGET_SETTINGS: Dict[str, float] = {
+    "Food": 10000,
+    "Transport": 7000,
+    "Shopping": 12000,
+    "Entertainment": 6000,
+    "Utilities": 8000,
+    "Housing": 25000,
+}
+
+SAVING_GOALS: List[Dict[str, Any]] = [
+    {
+        "name": "Emergency Fund",
+        "target_amount": 150000,
+        "current_saved": 42000,
+        "monthly_target": 8000,
+    },
+    {
+        "name": "Travel Fund",
+        "target_amount": 90000,
+        "current_saved": 18000,
+        "monthly_target": 6000,
+    },
+]
+
+USER_PROFILE: Dict[str, Any] = {
+    "role": "personal",
+    "name": "Analyst",
+}
 
 
 def now_iso() -> str:
@@ -124,6 +165,34 @@ def category_tips(category_totals: Dict[str, float], total_spend: float) -> List
     return tips[:4]
 
 
+def enrich_analytics(frame: pd.DataFrame, payload: Dict[str, Any]) -> Dict[str, Any]:
+    anomalies = detect_anomalies(frame)
+    recurring = detect_recurring_transactions(frame)
+    duplicates = detect_duplicates(frame)
+    budget_status = build_budget_status(payload.get("category_totals", {}), BUDGET_SETTINGS)
+    health = compute_health_score(
+        float(payload.get("total_spend", 0) or 0),
+        payload.get("category_totals", {}),
+        anomalies,
+        budget_status,
+    )
+    forecast = forecast_next_month_spend(frame)
+    accounts = build_account_summary(frame)
+    goals = evaluate_goals(float(payload.get("total_spend", 0) or 0), SAVING_GOALS)
+
+    payload["anomaly_alerts"] = anomalies
+    payload["recurring_transactions"] = recurring
+    payload["duplicate_transactions"] = duplicates
+    payload["budget_settings"] = BUDGET_SETTINGS
+    payload["budget_status"] = budget_status
+    payload["financial_health"] = health
+    payload["forecast_next_month"] = forecast
+    payload["account_summary"] = accounts
+    payload["saving_goals"] = goals
+    payload["user_profile"] = USER_PROFILE
+    return payload
+
+
 def summarize_uploaded_rows(frame: pd.DataFrame) -> Dict[str, Any]:
     amount_series = pd.to_numeric(frame.get("amount", pd.Series([0] * len(frame))), errors="coerce").fillna(0)
     category_series = frame.get("predicted", pd.Series(["Others"] * len(frame))).fillna("Others").astype(str)
@@ -157,7 +226,7 @@ def summarize_uploaded_rows(frame: pd.DataFrame) -> Dict[str, Any]:
     display_rows["amount"] = amount_series
     display_rows["category"] = category_series
 
-    return {
+    summary = {
         "total_spend": total_spend,
         "transaction_count": transaction_count,
         "average_amount": average_amount,
@@ -178,6 +247,17 @@ def summarize_uploaded_rows(frame: pd.DataFrame) -> Dict[str, Any]:
         ],
         "privacy_controls": PRIVACY_SETTINGS,
     }
+
+    enriched_frame = pd.DataFrame(
+        {
+            "date": pd.to_datetime(frame.get("date"), errors="coerce"),
+            "amount": amount_series,
+            "description": frame.get("description", pd.Series([""] * len(frame))).astype(str),
+            "category": category_series,
+            "account": frame.get("account", pd.Series(["Default"] * len(frame))).astype(str),
+        }
+    )
+    return enrich_analytics(enriched_frame, summary)
 
 
 def summarize_transactions(frame: pd.DataFrame, accuracy: float, evaluation: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -219,7 +299,7 @@ def summarize_transactions(frame: pd.DataFrame, accuracy: float, evaluation: Opt
             }
         )
 
-    return {
+    summary = {
         "total_spend": total_spend,
         "transaction_count": transaction_count,
         "average_amount": average_amount,
@@ -245,6 +325,8 @@ def summarize_transactions(frame: pd.DataFrame, accuracy: float, evaluation: Opt
         ],
         "privacy_controls": PRIVACY_SETTINGS,
     }
+
+    return enrich_analytics(frame, summary)
 
 
 def server_snapshot() -> Dict[str, Any]:
@@ -297,6 +379,132 @@ def update_privacy_settings(data: Dict[str, Any]) -> Dict[str, Any]:
         "status": "updated",
         "privacy_controls": PRIVACY_SETTINGS,
         "updated_at": now_iso(),
+    }
+
+
+@app.get("/budgets")
+def get_budgets() -> Dict[str, Any]:
+    return {
+        "budgets": BUDGET_SETTINGS,
+        "updated_at": now_iso(),
+    }
+
+
+@app.post("/budgets")
+def update_budgets(data: Dict[str, Any]) -> Dict[str, Any]:
+    for key, value in data.items():
+        try:
+            BUDGET_SETTINGS[str(key)] = max(0.0, float(value))
+        except (TypeError, ValueError):
+            continue
+
+    return {
+        "status": "updated",
+        "budgets": BUDGET_SETTINGS,
+        "updated_at": now_iso(),
+    }
+
+
+@app.get("/goals")
+def get_goals() -> Dict[str, Any]:
+    return {
+        "goals": SAVING_GOALS,
+        "updated_at": now_iso(),
+    }
+
+
+@app.post("/goals")
+def update_goals(data: Dict[str, Any]) -> Dict[str, Any]:
+    global SAVING_GOALS
+    goals = data.get("goals", [])
+    if isinstance(goals, list):
+        normalized_goals = []
+        for goal in goals:
+            if not isinstance(goal, dict):
+                continue
+            normalized_goals.append(
+                {
+                    "name": str(goal.get("name", "Goal")).strip() or "Goal",
+                    "target_amount": float(goal.get("target_amount", 0) or 0),
+                    "current_saved": float(goal.get("current_saved", 0) or 0),
+                    "monthly_target": float(goal.get("monthly_target", 0) or 0),
+                }
+            )
+
+        if normalized_goals:
+            SAVING_GOALS = normalized_goals
+
+    return {
+        "status": "updated",
+        "goals": SAVING_GOALS,
+        "updated_at": now_iso(),
+    }
+
+
+@app.get("/profile")
+def get_profile() -> Dict[str, Any]:
+    return {
+        "profile": USER_PROFILE,
+        "updated_at": now_iso(),
+    }
+
+
+@app.post("/profile")
+def update_profile(data: Dict[str, Any]) -> Dict[str, Any]:
+    role = str(data.get("role", USER_PROFILE.get("role", "personal"))).strip().lower()
+    if role not in {"personal", "business"}:
+        role = "personal"
+    USER_PROFILE["role"] = role
+    if "name" in data:
+        USER_PROFILE["name"] = str(data.get("name") or "Analyst").strip() or "Analyst"
+
+    return {
+        "status": "updated",
+        "profile": USER_PROFILE,
+        "updated_at": now_iso(),
+    }
+
+
+@app.post("/feedback/correction")
+def correction_feedback(data: Dict[str, Any]) -> Dict[str, Any]:
+    global transactions, model, MODEL_ACCURACY, MODEL_EVALUATION, ROBUSTNESS_REPORT
+
+    description = str(data.get("description", "")).strip()
+    corrected_category = str(data.get("corrected_category", "")).strip()
+    amount = float(data.get("amount", 0) or 0)
+
+    if not description or not corrected_category:
+        raise HTTPException(status_code=400, detail="description and corrected_category are required")
+
+    new_row = pd.DataFrame(
+        [
+            {
+                "date": pd.Timestamp.utcnow(),
+                "amount": amount,
+                "description": description,
+                "category": corrected_category,
+            }
+        ]
+    )
+    transactions = pd.concat([transactions, new_row], ignore_index=True)
+    model, MODEL_ACCURACY, MODEL_EVALUATION = retrain_and_persist_model(MODEL_PATH, transactions)
+    ROBUSTNESS_REPORT = run_robustness_suite(model)
+
+    return {
+        "status": "accepted",
+        "accuracy": MODEL_ACCURACY,
+        "rows": int(len(transactions)),
+        "updated_at": now_iso(),
+    }
+
+
+@app.get("/report/monthly")
+def export_monthly_report() -> Dict[str, Any]:
+    summary = summarize_transactions(transactions, MODEL_ACCURACY, MODEL_EVALUATION)
+    return {
+        "report": summary,
+        "report_text": build_report_text(summary),
+        "generated_at": now_iso(),
     }
 
 
@@ -450,6 +658,84 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
             "suggestions": ["upload csv", "show backend status"],
         }
 
+    if "top 5" in lowered and any(keyword in lowered for keyword in ["expense", "spend", "transaction"]):
+        if transactions.empty:
+            return {
+                "reply": "No transaction data available yet. Upload a CSV first.",
+                "suggestions": ["upload csv", "show backend status"],
+            }
+
+        top_items = (
+            transactions.sort_values("amount", ascending=False)
+            .head(5)[["description", "amount", "category"]]
+            .to_dict(orient="records")
+        )
+        lines = [
+            f"- {item['description']} ({item['category']}): INR {float(item['amount']):,.0f}"
+            for item in top_items
+        ]
+        return {
+            "reply": "Top 5 expenses:\n" + "\n".join(lines),
+            "suggestions": ["show anomalies", "forecast next month"],
+        }
+
+    if "last month" in lowered and any(keyword in lowered for keyword in ["spend", "expense"]):
+        if transactions.empty:
+            return {
+                "reply": "No transaction data available yet. Upload a CSV first.",
+                "suggestions": ["upload csv", "show backend status"],
+            }
+
+        last_month = (pd.Timestamp.utcnow().to_period("M") - 1)
+        frame = transactions.copy()
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+        frame = frame[frame["date"].dt.to_period("M") == last_month]
+
+        requested_category = None
+        for category in sorted(transactions["category"].dropna().astype(str).unique().tolist()):
+            if category.lower() in lowered:
+                requested_category = category
+                break
+
+        if requested_category:
+            frame = frame[frame["category"].astype(str).str.lower() == requested_category.lower()]
+
+        spend_value = float(frame.get("amount", pd.Series(dtype="float64")).sum())
+        category_text = requested_category or "all categories"
+        return {
+            "reply": f"Last month spend for {category_text}: INR {spend_value:,.0f}.",
+            "suggestions": ["top 5 expenses", "forecast next month"],
+        }
+
+    if "forecast" in lowered:
+        forecast = analytics_context.get("forecast_next_month", {})
+        total = float(forecast.get("total", 0) or 0)
+        top_categories = forecast.get("categories", [])[:3]
+        cat_text = ", ".join(
+            [f"{item.get('category')}: INR {float(item.get('predicted_amount', 0)):,.0f}" for item in top_categories]
+        ) or "No forecast categories yet"
+        return {
+            "reply": f"Predicted next-month total spend is INR {total:,.0f}. Top expected categories: {cat_text}.",
+            "suggestions": ["show anomalies", "what is my top spending category"],
+        }
+
+    if "anomal" in lowered:
+        anomalies = analytics_context.get("anomaly_alerts", [])
+        if not anomalies:
+            return {
+                "reply": "No anomaly alerts detected right now.",
+                "suggestions": ["forecast next month", "top 5 expenses"],
+            }
+
+        lines = [
+            f"- {item.get('description', '')} ({item.get('category', '')}) INR {float(item.get('amount', 0)):,.0f}"
+            for item in anomalies[:5]
+        ]
+        return {
+            "reply": "Anomaly alerts:\n" + "\n".join(lines),
+            "suggestions": ["set budget", "forecast next month"],
+        }
+
     # Keep responses grounded to supported finance intents instead of returning unrelated summaries.
     in_scope_keywords = [
         "predict", "category", "spend", "expense", "saving", "budget", "status", "backend",
@@ -579,6 +865,18 @@ async def bulk_predict(file: UploadFile = File(...), job_id: Optional[str] = Non
             ],
         )
 
+        account_column = find_column(
+            df,
+            [
+                "account",
+                "account name",
+                "bank account",
+                "source account",
+                "card",
+                "account number",
+            ],
+        )
+
         if text_column is None:
             raise HTTPException(
                 status_code=400,
@@ -597,8 +895,15 @@ async def bulk_predict(file: UploadFile = File(...), job_id: Optional[str] = Non
         else:
             amount_values = pd.Series([0] * len(df), index=df.index, dtype="float64")
 
+        quality_report = build_csv_quality_report(df, text_column, amount_column)
+
         df["description"] = text_values
         df["amount"] = amount_values.astype(float)
+        df["account"] = (
+            df[account_column].fillna("Default").astype(str).str.strip()
+            if account_column is not None
+            else "Default"
+        )
         df["source_text_column"] = text_column
         df["source_amount_column"] = amount_column if amount_column is not None else ""
 
@@ -622,6 +927,7 @@ async def bulk_predict(file: UploadFile = File(...), job_id: Optional[str] = Non
                 "amount": pd.to_numeric(active_frame["amount"], errors="coerce").fillna(0),
                 "description": active_frame["description"].astype(str),
                 "category": active_frame["predicted"].astype(str),
+                "account": active_frame.get("account", "Default"),
             }
         )
 
@@ -634,6 +940,7 @@ async def bulk_predict(file: UploadFile = File(...), job_id: Optional[str] = Non
             response_frame["description"] = response_frame["description"].astype(str).apply(anonymize_text)
 
         analytics = summarize_uploaded_rows(response_frame)
+        analytics["csv_quality"] = quality_report
 
         if PRIVACY_SETTINGS.get("persist_uploaded_rows", False):
             transactions.to_csv(DATA_PATH, index=False)
@@ -646,6 +953,8 @@ async def bulk_predict(file: UploadFile = File(...), job_id: Optional[str] = Non
             "analytics": analytics,
             "detected_column": text_column,
             "detected_amount_column": amount_column,
+            "detected_account_column": account_column,
+            "csv_quality": quality_report,
         }
 
     except HTTPException as exc:

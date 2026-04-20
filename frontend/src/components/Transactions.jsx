@@ -58,11 +58,14 @@ export default function Transactions({ transactions = [], isProcessing = false }
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [categorySearch, setCategorySearch] = useState("");
   const [sortOrder, setSortOrder] = useState("desc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 20;
 
   const resetFilters = () => {
     setCategoryFilter("All");
     setCategorySearch("");
     setSortOrder("desc");
+    setCurrentPage(1);
   };
 
   const categories = Array.from(new Set(transactions.map((row) => getRowCategory(row)))).sort();
@@ -95,6 +98,9 @@ export default function Transactions({ transactions = [], isProcessing = false }
   );
 
   const showProcessing = isProcessing;
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / PAGE_SIZE));
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pagedTransactions = filteredTransactions.slice(pageStart, pageStart + PAGE_SIZE);
 
   const exportFilteredTransactions = () => {
     if (!filteredTransactions.length) {
@@ -167,7 +173,10 @@ export default function Transactions({ transactions = [], isProcessing = false }
           </span>
           <select
             value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value)}
+            onChange={(event) => {
+              setCategoryFilter(event.target.value);
+              setCurrentPage(1);
+            }}
             className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
           >
             <option value="All">All</option>
@@ -185,7 +194,10 @@ export default function Transactions({ transactions = [], isProcessing = false }
           </span>
           <input
             value={categorySearch}
-            onChange={(event) => setCategorySearch(event.target.value)}
+            onChange={(event) => {
+              setCategorySearch(event.target.value);
+              setCurrentPage(1);
+            }}
             placeholder="Type travel, food, shopping..."
             className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
           />
@@ -197,7 +209,10 @@ export default function Transactions({ transactions = [], isProcessing = false }
           </span>
           <select
             value={sortOrder}
-            onChange={(event) => setSortOrder(event.target.value)}
+            onChange={(event) => {
+              setSortOrder(event.target.value);
+              setCurrentPage(1);
+            }}
             className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
           >
             <option value="desc">Descending</option>
@@ -207,7 +222,7 @@ export default function Transactions({ transactions = [], isProcessing = false }
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200">
-        <div className="grid grid-cols-12 gap-3 border-b border-slate-200 bg-slate-100 px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-500">
+        <div className="hidden grid-cols-12 gap-3 border-b border-slate-200 bg-slate-100 px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-500 md:grid">
           <div className="col-span-4">Description</div>
           <div className="col-span-2 text-right">Amount</div>
           <div className="col-span-3">Actual</div>
@@ -220,25 +235,33 @@ export default function Transactions({ transactions = [], isProcessing = false }
             Processing data...
           </div>
         ) : filteredTransactions.length > 0 ? (
-          filteredTransactions.map(({ row: transaction, amount, originalIndex }) => (
+          pagedTransactions.map(({ row: transaction, amount, originalIndex }) => (
             <div
               key={`${transaction.id || transaction.transaction_id || "txn"}-${originalIndex}`}
-              className="grid grid-cols-12 gap-3 border-b border-slate-200 px-4 py-3 text-sm last:border-b-0"
+              className="border-b border-slate-200 px-4 py-3 text-sm last:border-b-0"
             >
-              <div className="col-span-4 text-slate-800">{transaction.description}</div>
-              <div className="col-span-2 text-right text-slate-700">
-                {currencyFormatter.format(amount)}
-              </div>
-              <div className="col-span-3 text-slate-600">{getRowCategory(transaction)}</div>
-              <div className="col-span-3">
-                <div className="flex flex-col gap-1">
-                  <span className="text-emerald-700">
-                    {getRowCategory(transaction)}
-                  </span>
-                  <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                    {transaction.prediction_source || transaction.source}
-                  </span>
+              <div className="grid grid-cols-12 gap-3 md:grid">
+                <div className="col-span-4 text-slate-800">{transaction.description}</div>
+                <div className="col-span-2 text-right text-slate-700 md:text-right">
+                  {currencyFormatter.format(amount)}
                 </div>
+                <div className="col-span-3 text-slate-600">{getRowCategory(transaction)}</div>
+                <div className="col-span-3">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-emerald-700">
+                      {getRowCategory(transaction)}
+                    </span>
+                    <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                      {transaction.prediction_source || transaction.source}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-2 space-y-1 rounded-lg bg-slate-50 p-2 text-xs text-slate-600 md:hidden">
+                <div>Amount: {currencyFormatter.format(amount)}</div>
+                <div>Actual: {getRowCategory(transaction)}</div>
+                <div>Predicted source: {transaction.prediction_source || transaction.source || "n/a"}</div>
               </div>
             </div>
           ))
@@ -248,6 +271,32 @@ export default function Transactions({ transactions = [], isProcessing = false }
           </div>
         )}
       </div>
+
+      {filteredTransactions.length > PAGE_SIZE && (
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+            Page {currentPage} of {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((previous) => Math.max(1, previous - 1))}
+              disabled={currentPage === 1}
+              className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((previous) => Math.min(totalPages, previous + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

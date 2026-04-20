@@ -255,23 +255,36 @@ def parse_amount_series(raw_series: pd.Series) -> pd.Series:
     return values
 
 
-def rule_based(description: str) -> Optional[str]:
+def rule_based(description: str) -> Tuple[Optional[str], Optional[str]]:
     lowered = description.lower()
     for category, keywords in RULE_MAP.items():
-        if any(keyword in lowered for keyword in keywords):
-            return category
-    return None
+        for keyword in keywords:
+            if keyword in lowered:
+                return category, keyword
+    return None, None
 
 
 def predict_category(description: str, model: Optional[Pipeline]) -> Dict[str, Any]:
     cleaned_description = str(description).strip()
-    rule_category = rule_based(cleaned_description)
+    rule_category, matched_keyword = rule_based(cleaned_description)
 
     if rule_category:
-        return {"category": rule_category, "source": "rules", "confidence": 1.0}
+        return {
+            "category": rule_category,
+            "source": "rules",
+            "confidence": 1.0,
+            "matched_keyword": matched_keyword,
+            "reason": f"Matched rule keyword '{matched_keyword}'" if matched_keyword else "Matched rules engine",
+        }
 
     if model is None:
-        return {"category": "Others", "source": "fallback", "confidence": None}
+        return {
+            "category": "Others",
+            "source": "fallback",
+            "confidence": None,
+            "matched_keyword": None,
+            "reason": "Model unavailable, fallback category used",
+        }
 
     predicted = model.predict([cleaned_description])[0]
     confidence = None
@@ -279,7 +292,13 @@ def predict_category(description: str, model: Optional[Pipeline]) -> Dict[str, A
         probabilities = model.predict_proba([cleaned_description])[0]
         confidence = float(max(probabilities))
 
-    return {"category": predicted, "source": "model", "confidence": confidence}
+    return {
+        "category": predicted,
+        "source": "model",
+        "confidence": confidence,
+        "matched_keyword": None,
+        "reason": "Predicted by ML model from transaction text",
+    }
 
 
 def batch_predict_categories(

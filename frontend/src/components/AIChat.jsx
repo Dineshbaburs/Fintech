@@ -15,6 +15,7 @@ export default function AIChat({ apiBase, analytics = null }) {
     "predict: uber ride to office",
     "show backend status",
     "what is my top spending category?",
+    "show top 5 expenses",
   ]);
   const [loading, setLoading] = useState(false);
 
