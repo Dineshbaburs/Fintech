@@ -126,16 +126,3 @@ body {
   filter: saturate(0.85) brightness(0.9);
 }
 
-.theme-dark .sidebar-shell [class*="text-slate-"] {
-  color: #cbd5e1 !important;
-}
-
-.theme-dark .sidebar-shell [class*="bg-white"],
-.theme-dark .sidebar-shell [class*="bg-slate-100"],
-.theme-dark .sidebar-shell [class*="bg-slate-50"] {
-  background-color: rgba(15, 23, 42, 0.62) !important;
-}
-
-.theme-dark .sidebar-shell [class*="border-slate-"] {
-  border-color: rgba(100, 116, 139, 0.45) !important;
-}

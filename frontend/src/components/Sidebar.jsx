@@ -1,8 +1,9 @@
-import { Home, BarChart2, Upload, MessageSquare, Zap, Settings, TrendingUp, PieChart, Send, LogOut, Menu, X } from "lucide-react";
+import { Home, BarChart2, Upload, MessageSquare, Zap, Settings, TrendingUp, PieChart, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 
 export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const isDark = theme === "dark";
 
   const navigateTo = (target) => {
     const element = document.getElementById(target);
@@ -45,7 +46,7 @@ export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
             <h1 className="text-xl font-bold bg-gradient-to-r from-teal-700 to-emerald-600 bg-clip-text text-transparent">
               FinData Intelligence
             </h1>
-            <p className="text-xs text-slate-500">Intelligence Platform</p>
+            <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>Intelligence Platform</p>
           </div>
         </div>
       </div>
@@ -54,7 +55,7 @@ export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
       <div className="flex-1 space-y-6 overflow-y-auto">
         {navigationGroups.map((group) => (
           <div key={group.label}>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
+            <p className={`mb-3 text-xs font-semibold uppercase tracking-widest ${isDark ? "text-slate-400" : "text-slate-500"}`}>
               {group.label}
             </p>
             <ul className="space-y-2">
@@ -68,11 +69,11 @@ export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
                         event.preventDefault();
                         navigateTo(item.target);
                       }}
-                      className="group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-slate-700 transition-all hover:bg-gradient-to-r hover:from-slate-100 hover:to-transparent hover:text-slate-900"
+                      className={`group flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all ${isDark ? "text-slate-200 hover:bg-slate-800/70 hover:text-white" : "text-slate-700 hover:bg-gradient-to-r hover:from-slate-100 hover:to-transparent hover:text-slate-900"}`}
                     >
                       <Icon className={`h-5 w-5 transition-transform group-hover:scale-110 ${item.color}`} />
                       <span className="flex-1">{item.label}</span>
-                      <div className="h-1 w-1 rounded-full bg-slate-300 opacity-0 transition-opacity group-hover:opacity-100" />
+                      <div className={`h-1 w-1 rounded-full opacity-0 transition-opacity group-hover:opacity-100 ${isDark ? "bg-slate-500" : "bg-slate-300"}`} />
                     </a>
                   </li>
                 );
@@ -83,25 +84,25 @@ export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
       </div>
 
       {/* Quick Stats */}
-      <div className="mb-6 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100/50 p-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-600">
+      <div className={`mb-6 rounded-2xl border p-4 ${isDark ? "border-slate-700/80 bg-slate-900/70 shadow-[0_14px_30px_-24px_rgba(2,6,23,0.95)]" : "border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100/50"}`}>
+        <p className={`mb-3 text-xs font-semibold uppercase tracking-widest ${isDark ? "text-slate-300" : "text-slate-600"}`}>
           Quick Stats
         </p>
         <div className="space-y-2">
-          <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
-            <span className="text-xs text-slate-600">Model Status</span>
+          <div className={`flex items-center justify-between rounded-lg border px-3 py-2 ${isDark ? "border-slate-700/80 bg-slate-800/80" : "border-transparent bg-white"}`}>
+            <span className={`text-xs ${isDark ? "text-slate-300" : "text-slate-600"}`}>Model Status</span>
             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
           </div>
-          <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
-            <span className="text-xs text-slate-600">Data Sync</span>
-            <span className="text-xs font-semibold text-slate-700">Active</span>
+          <div className={`flex items-center justify-between rounded-lg border px-3 py-2 ${isDark ? "border-slate-700/80 bg-slate-800/80" : "border-transparent bg-white"}`}>
+            <span className={`text-xs ${isDark ? "text-slate-300" : "text-slate-600"}`}>Data Sync</span>
+            <span className={`text-xs font-semibold ${isDark ? "text-emerald-300" : "text-slate-700"}`}>Active</span>
           </div>
         </div>
       </div>
 
       {/* User Profile Card */}
-      <div className="mb-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm">
-        <p className="mb-2 text-xs uppercase tracking-widest font-semibold text-teal-700">
+      <div className={`mb-4 rounded-2xl border p-4 shadow-sm ${isDark ? "border-slate-700/80 bg-slate-900/75 shadow-[0_14px_30px_-24px_rgba(2,6,23,0.95)]" : "border-slate-200 bg-gradient-to-br from-white to-slate-50"}`}>
+        <p className={`mb-2 text-xs uppercase tracking-widest font-semibold ${isDark ? "text-teal-300" : "text-teal-700"}`}>
           Account
         </p>
         <div className="flex items-center gap-3 mb-3">
@@ -111,10 +112,10 @@ export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
             </span>
           </div>
           <div>
-            <p className="truncate text-sm font-semibold text-slate-900">
+            <p className={`truncate text-sm font-semibold ${isDark ? "text-slate-100" : "text-slate-900"}`}>
               {activeUser?.split("@")[0] || "User"}
             </p>
-            <p className="truncate text-xs text-slate-500">{activeUser}</p>
+            <p className={`truncate text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>{activeUser}</p>
           </div>
         </div>
 
@@ -125,7 +126,7 @@ export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
               event.preventDefault();
               navigateTo("settings-section");
             }}
-            className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700 transition hover:bg-slate-200"
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs transition ${isDark ? "border border-slate-700/80 bg-slate-800/85 text-slate-200 hover:bg-slate-700/85" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
           >
             <Settings className="h-4 w-4" />
             Settings
@@ -136,7 +137,7 @@ export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
               closeMobile();
               onLogout();
             }}
-            className="w-full flex items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-100"
+            className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition ${isDark ? "border border-rose-900/60 bg-rose-950/50 text-rose-300 hover:bg-rose-900/45" : "bg-rose-50 text-rose-700 hover:bg-rose-100"}`}
           >
             <LogOut className="h-4 w-4" />
             Log out
@@ -145,8 +146,8 @@ export default function Sidebar({ activeUser, onLogout, theme = "light" }) {
       </div>
 
       {/* Footer Info */}
-      <div className="border-t border-slate-200 pt-4">
-        <p className="text-xs leading-relaxed text-slate-600">
+      <div className={`border-t pt-4 ${isDark ? "border-slate-700/80" : "border-slate-200"}`}>
+        <p className={`text-xs leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
           🔒 <span className="font-semibold">100% Private.</span> All transaction processing happens locally. Your data never leaves your device.
         </p>
       </div>
