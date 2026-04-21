@@ -23,7 +23,6 @@ export default function UploadOnboarding({ onUploadComplete, theme = "dark" }) {
           style={{ animationDelay: "1s" }}
         />
         <div className={`absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl ${isDark ? "bg-emerald-500/10" : "bg-emerald-300/20"}`} />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:44px_44px]" />
         {isDark && <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_35%,rgba(2,6,23,0.58)_100%)]" />}
       </div>
 

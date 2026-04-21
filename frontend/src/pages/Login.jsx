@@ -151,12 +151,11 @@ export default function Login({ onLogin, theme = "dark" }) {
           <div className="absolute -left-40 top-0 h-96 w-96 rounded-full bg-teal-500/25 blur-3xl animate-pulse" />
           <div className="absolute -right-40 bottom-0 h-96 w-96 rounded-full bg-cyan-500/15 blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
           <div className="absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/10 blur-3xl" />
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px)] bg-[size:44px_44px]" />
         </div>
   
         <div className="relative min-h-screen">
           <div className="flex min-h-screen flex-col lg:flex-row">
-            <div className={`flex flex-col justify-between px-6 py-10 backdrop-blur-sm sm:px-10 lg:w-1/2 lg:py-12 ${isDark ? "border-b border-white/10 bg-gradient-to-b from-slate-900/70 to-slate-900/40 lg:border-b-0 lg:border-r lg:border-white/10" : "rounded-3xl border border-slate-200/70 bg-white/70 shadow-[0_16px_34px_-22px_rgba(15,23,42,0.35)] lg:mr-8"}`}>
+            <div className={`flex flex-col justify-between px-6 py-10 sm:px-10 lg:w-1/2 lg:py-12 ${isDark ? "border-b border-white/10 lg:border-b-0" : ""}`}>
               <div>
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600">
