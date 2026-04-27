@@ -221,7 +221,6 @@ def summarize_uploaded_rows(frame: pd.DataFrame) -> Dict[str, Any]:
             .sort_values("day")
             .to_dict(orient="records")
         )
-
     display_rows = frame.copy()
     display_rows["amount"] = amount_series
     display_rows["category"] = category_series
