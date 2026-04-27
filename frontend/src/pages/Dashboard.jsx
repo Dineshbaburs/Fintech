@@ -1,14 +1,13 @@
 import SummaryCards from "../components/SummaryCards";
 import ExpenseChart from "../components/ExpenseChart";
 import Predict from "../components/Predict";
-import AIChat from "../components/AIChat";
 import Upload from "../components/Upload";
 import Transactions from "../components/Transactions";
 import InsightsHub from "../components/InsightsHub";
 import { useEffect, useState } from "react";
 import { Activity, Zap, TrendingUp, Clock, AlertCircle } from "lucide-react";
 
-export default function Dashboard({ activeUser = "", initialPayload = null, theme = "light" }) {
+export default function Dashboard({ activeUser = "", initialPayload = null, theme = "light", onAnalyticsChange = () => {} }) {
   const SECTION_IDS = ["dashboard-section", "analytics-section", "upload-section", "settings-section"];
   const apiBase = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
   const [analytics, setAnalytics] = useState(
@@ -156,8 +155,6 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
         setActivePanel("settings");
       } else if (clickedLabel.includes("prediction")) {
         setActivePanel("predictions");
-      } else if (clickedLabel.includes("ai chat")) {
-        setActivePanel("ai-chat");
       } else if (clickedLabel.includes("expense")) {
         setActivePanel("expenses");
       } else {
@@ -184,6 +181,10 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
       element.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }, [activeSection]);
+
+  useEffect(() => {
+    onAnalyticsChange(analytics ?? null);
+  }, [analytics, onAnalyticsChange]);
 
   const tips = analytics?.savings_tips ?? [];
   const advancedFeatures = analytics?.advanced_features ?? [];
@@ -405,13 +406,11 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
           <div className="mb-6 rounded-3xl border border-white/80 bg-white/80 p-5 shadow-[0_16px_34px_-22px_rgba(15,23,42,0.45)]">
             <h2 className="text-2xl font-bold text-slate-900">
               {activePanel === "predictions" && "Predictions"}
-              {activePanel === "ai-chat" && "AI Chat"}
               {activePanel === "expenses" && "Expenses"}
               {(activePanel === "analytics" || activePanel === "dashboard" || activePanel === "upload") && "Analytics"}
             </h2>
             <p className="mt-1 text-sm text-slate-600">
               {activePanel === "predictions" && "Run single-transaction ML predictions."}
-              {activePanel === "ai-chat" && "Ask assistant questions about your spending behavior."}
               {activePanel === "expenses" && "Inspect uploaded rows and transaction history."}
               {(activePanel === "analytics" || activePanel === "dashboard" || activePanel === "upload") && "Explore category trends and savings opportunities."}
             </p>
@@ -483,12 +482,6 @@ export default function Dashboard({ activeUser = "", initialPayload = null, them
                   </div>
                 )}
               </div>
-            </div>
-          )}
-
-          {activePanel === "ai-chat" && (
-            <div className="mb-8 max-w-3xl">
-              <AIChat apiBase={apiBase} analytics={analytics} activeUser={activeUser} />
             </div>
           )}
 
