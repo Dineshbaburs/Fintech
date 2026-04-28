@@ -57,9 +57,7 @@ OLLAMA_CHAT_URL = f"{OLLAMA_BASE_URL.rstrip('/')}/api/chat"
 def preferred_llm_provider() -> str:
     if LLM_PROVIDER in {"openai", "ollama", "rules"}:
         return LLM_PROVIDER
-    if OPENAI_API_KEY:
-        return "openai"
-    return "ollama"
+    return "rules"
 
 app = FastAPI()
 
@@ -335,7 +333,7 @@ def category_tips(category_totals: Dict[str, float], total_spend: float) -> List
         return ["No expenses detected yet. Upload a CSV to generate insights."]
 
     sorted_categories = sorted(category_totals.items(), key=lambda item: item[1], reverse=True)
-    top_category, top_amount = sorted_categorie s[0]
+    top_category, top_amount = sorted_categories[0]
     tips = [
         f"Your highest spend is {top_category} at INR {top_amount:,.0f}. Set a weekly cap there first.",
     ]
@@ -824,6 +822,37 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
             ),
         }
 
+    def build_savings_goal_reply(target_amount: float) -> Dict[str, Any]:
+        if target_amount <= 0:
+            return {
+                "reply": "Tell me a target amount in INR and I’ll split it into a savings plan for you.",
+                "suggestions": finance_suggestions("how can I reduce food expenses?", "give me a budget plan for next month"),
+            }
+
+        monthly_goal = target_amount / 3
+        weekly_goal = target_amount / 12
+        return {
+            "reply": (
+                f"To save {money(target_amount)}, aim for about {money(monthly_goal)} per month or {money(weekly_goal)} per week. "
+                "Start by cutting the top 2 spending categories by 10%, then move that amount into a separate savings account right away."
+            ),
+            "suggestions": finance_suggestions(
+                "give me a budget plan for next month",
+                "what is my top spending category?",
+                "how can I reduce food expenses?",
+                "forecast next month",
+            ),
+        }
+
+    def parse_savings_target(text: str) -> Optional[float]:
+        match = re.search(r"(?:save|savings?|reduce)\D{0,12}(\d[\d,]*)", text.lower())
+        if not match:
+            return None
+        try:
+            return float(match.group(1).replace(",", ""))
+        except ValueError:
+            return None
+
     def build_default_suggestions() -> List[str]:
         return finance_suggestions(
             "what is my top spending category?",
@@ -867,8 +896,7 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
     if any(token in lowered for token in ["hello", "hi", "hey"]):
         return {
             "reply": (
-                "I am Leo, your finance assistant. I can analyze spending, forecast categories, suggest savings actions, "
-                "and predict transaction categories."
+                "Hi, I am Leo, your FinData Intelligence assistant. Ask me about spending trends, budgeting, savings, or predictions."
             ),
             "suggestions": build_default_suggestions(),
         }
@@ -888,14 +916,11 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
     if any(keyword in lowered for keyword in ["budget plan", "budget plan for next month", "monthly budget", "plan next month"]):
         return build_budget_plan_reply()
 
-    if any(keyword in lowered for keyword in ["reduce", "save", "tip", "tips"]):
-        llm_reply = generate_llm_reply(message, history, analytics_context)
-        if llm_reply:
-            return {
-                "reply": llm_reply,
-                "suggestions": build_contextual_suggestions(),
-            }
+    savings_target = parse_savings_target(message)
+    if savings_target is not None:
+        return build_savings_goal_reply(savings_target)
 
+    if any(keyword in lowered for keyword in ["reduce", "save", "tip", "tips"]):
         tips = analytics_context.get("savings_tips", [])
         requested_category = requested_category_from_text(message)
 
@@ -928,13 +953,6 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
                 "forecast next month",
                 "upload csv",
             ),
-        }
-
-    llm_reply = generate_llm_reply(message, history, analytics_context)
-    if llm_reply:
-        return {
-            "reply": llm_reply,
-            "suggestions": build_contextual_suggestions(),
         }
 
     if "predict" in lowered:
@@ -1121,6 +1139,12 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
             "reply": "Anomaly alerts:\n" + "\n".join(lines),
             "suggestions": finance_suggestions("give me a budget plan for next month", "forecast next month"),
         }
+
+    if any(keyword in lowered for keyword in ["savings goal", "save more", "save money", "monthly savings"]):
+        savings_total = float(analytics_context.get("total_spend", 0) or 0)
+        if savings_total > 0:
+            target = max(5000.0, savings_total * 0.1)
+            return build_savings_goal_reply(target)
 
     # Keep responses grounded to supported finance intents instead of returning unrelated summaries.
     in_scope_keywords = [
