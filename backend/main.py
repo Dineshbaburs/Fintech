@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +11,8 @@ from uuid import uuid4
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+import requests
 
 from model.ml_utils import (
     batch_predict_categories,
@@ -38,6 +41,25 @@ from model.insights import (
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATA_PATH = BASE_DIR / "data" / "transactions.csv"
 MODEL_PATH = BASE_DIR / "models" / "model.pkl"
+
+load_dotenv(BASE_DIR / "backend" / ".env")
+load_dotenv(BASE_DIR / ".env")
+
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "").strip().lower()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").strip() or "http://127.0.0.1:11434"
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2").strip() or "llama3.2"
+OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
+OLLAMA_CHAT_URL = f"{OLLAMA_BASE_URL.rstrip('/')}/api/chat"
+
+
+def preferred_llm_provider() -> str:
+    if LLM_PROVIDER in {"openai", "ollama", "rules"}:
+        return LLM_PROVIDER
+    if OPENAI_API_KEY:
+        return "openai"
+    return "ollama"
 
 app = FastAPI()
 
@@ -96,6 +118,176 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def format_amount(value: Any) -> str:
+    try:
+        return f"INR {float(value):,.0f}"
+    except (TypeError, ValueError):
+        return "INR 0"
+
+
+def build_chat_history(history: List[Dict[str, Any]], limit: int = 8) -> str:
+    lines: List[str] = []
+    for item in history[-limit:]:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role", "")).strip().lower()
+        content = str(item.get("content", "")).strip()
+        if role not in {"user", "assistant"} or not content:
+            continue
+        prefix = "User" if role == "user" else "Leo"
+        lines.append(f"{prefix}: {content}")
+    return "\n".join(lines) if lines else "No prior conversation."
+
+
+def build_finance_context_text(analytics_context: Dict[str, Any]) -> str:
+    category_totals = analytics_context.get("category_totals", {})
+    if not isinstance(category_totals, dict):
+        category_totals = {}
+
+    lines: List[str] = []
+
+    total_spend = float(analytics_context.get("total_spend", 0) or 0)
+    top_category = analytics_context.get("top_category") or "N/A"
+    lines.append(f"Total spend: {format_amount(total_spend)}")
+    lines.append(f"Top category: {top_category}")
+
+    if category_totals:
+        sorted_categories = sorted(category_totals.items(), key=lambda item: item[1], reverse=True)
+        category_lines = [f"{category}: {format_amount(amount)}" for category, amount in sorted_categories[:6]]
+        lines.append("Category totals: " + "; ".join(category_lines))
+
+    budget_status = analytics_context.get("budget_status", {})
+    if isinstance(budget_status, dict):
+        lines.append(
+            "Budget status: "
+            f"{int(budget_status.get('exceeded_count', 0) or 0)} exceeded, "
+            f"{int(budget_status.get('warning_count', 0) or 0)} near limit"
+        )
+
+    health = analytics_context.get("financial_health", {})
+    if isinstance(health, dict) and health:
+        reasons = health.get("reasons", [])
+        reason_text = "; ".join([str(reason) for reason in reasons[:3]]) if isinstance(reasons, list) else ""
+        lines.append(
+            f"Financial health: {health.get('score', 0)}/100 ({health.get('label', 'unknown')})"
+            + (f". Reasons: {reason_text}" if reason_text else "")
+        )
+
+    forecast = analytics_context.get("forecast_next_month", {})
+    if isinstance(forecast, dict) and forecast:
+        forecast_total = float(forecast.get("total", 0) or 0)
+        forecast_categories = forecast.get("categories", [])
+        cat_text = "; ".join(
+            [f"{item.get('category')}: {format_amount(item.get('predicted_amount', 0))}" for item in forecast_categories[:5]]
+        )
+        lines.append(f"Forecast next month total: {format_amount(forecast_total)}")
+        if cat_text:
+            lines.append(f"Forecast categories: {cat_text}")
+
+    tips = analytics_context.get("savings_tips", [])
+    if isinstance(tips, list) and tips:
+        lines.append("Savings tips: " + " | ".join([str(tip) for tip in tips[:4]]))
+
+    recent: List[str] = []
+    if not transactions.empty:
+        frame = transactions.copy()
+        if "date" in frame.columns:
+            frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+            frame = frame.sort_values("date", ascending=False)
+
+        for _, row in frame.head(5).iterrows():
+            description = str(row.get("description", "")).strip() or "Unnamed transaction"
+            category = str(row.get("category", "Others")).strip() or "Others"
+            date_value = row.get("date")
+            recent.append(
+                f"{date_value.strftime('%Y-%m-%d') if pd.notna(date_value) else 'unknown'} | "
+                f"{description} | {format_amount(row.get('amount', 0))} | {category}"
+            )
+
+    if recent:
+        lines.append("Recent transactions: " + " ; ".join(recent))
+
+    return "\n".join(lines)
+
+
+def generate_llm_reply(message: str, history: List[Dict[str, Any]], analytics_context: Dict[str, Any]) -> Optional[str]:
+    provider = preferred_llm_provider()
+    if provider == "rules":
+        return None
+
+    system_prompt = (
+        "You are Leo, an advanced finance assistant for FinData Intelligence. "
+        "Answer only finance-related questions about spending, budgets, predictions, savings, transactions, and uploaded CSVs. "
+        "Use the provided finance context to tailor the answer. Be specific, concise, and avoid generic repeats. "
+        "If the user asks for a budget plan, provide a practical month plan with category caps and next steps. "
+        "If the data is missing, clearly say what is missing and ask for the CSV upload. "
+        "Return plain text only. Prefer short paragraphs or bullets when advice is requested."
+    )
+
+    context_prompt = (
+        "Finance context:\n"
+        f"{build_finance_context_text(analytics_context)}\n\n"
+        f"Conversation:\n{build_chat_history(history)}"
+    )
+
+    messages_payload = [
+        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": context_prompt},
+    ]
+
+    for item in history[-8:]:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role", "")).strip().lower()
+        content = str(item.get("content", "")).strip()
+        if role in {"user", "assistant"} and content:
+            messages_payload.append({"role": role, "content": content})
+
+    if not messages_payload or messages_payload[-1].get("role") != "user" or messages_payload[-1].get("content") != message:
+        messages_payload.append({"role": "user", "content": message})
+
+    try:
+        if provider == "ollama":
+            response = requests.post(
+                OLLAMA_CHAT_URL,
+                headers={"Content-Type": "application/json"},
+                json={
+                    "model": OLLAMA_MODEL,
+                    "messages": messages_payload,
+                    "stream": False,
+                },
+                timeout=60,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            message_payload = payload.get("message", {}) if isinstance(payload, dict) else {}
+            reply = str(message_payload.get("content", "")).strip()
+            return reply or None
+
+        response = requests.post(
+            OPENAI_CHAT_COMPLETIONS_URL,
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": OPENAI_MODEL,
+                "messages": messages_payload,
+                "temperature": 0.4,
+                "max_tokens": 350,
+            },
+            timeout=25,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        choices = payload.get("choices", []) if isinstance(payload, dict) else []
+        message_payload = choices[0].get("message", {}) if choices else {}
+        reply = str(message_payload.get("content", "")).strip()
+        return reply or None
+    except Exception:
+        return None
+
+
 def update_job(job_id: str, *, status: str, progress: int, message: str, rows: int = 0) -> None:
     JOB_STATUS[job_id] = {
         "job_id": job_id,
@@ -143,7 +335,7 @@ def category_tips(category_totals: Dict[str, float], total_spend: float) -> List
         return ["No expenses detected yet. Upload a CSV to generate insights."]
 
     sorted_categories = sorted(category_totals.items(), key=lambda item: item[1], reverse=True)
-    top_category, top_amount = sorted_categories[0]
+    top_category, top_amount = sorted_categorie s[0]
     tips = [
         f"Your highest spend is {top_category} at INR {top_amount:,.0f}. Set a weekly cap there first.",
     ]
@@ -540,20 +732,143 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
     lowered = message.lower()
     dashboard_data = summarize_transactions(transactions, MODEL_ACCURACY, MODEL_EVALUATION) if not transactions.empty else None
     analytics_context = provided_analytics or dashboard_data or {}
+    category_totals = analytics_context.get("category_totals", {}) if isinstance(analytics_context.get("category_totals", {}), dict) else {}
+
+    def finance_suggestions(*items: str) -> List[str]:
+        options = []
+        for item in items:
+            value = str(item).strip()
+            if value and value not in options and not any(blocked in value.lower() for blocked in ["backend", "server", "status"]):
+                options.append(value)
+        return options[:4] if options else [
+            "what is my top spending category?",
+            "show my monthly spending trend",
+            "how can I reduce food expenses?",
+            "give me a budget plan for next month",
+        ]
+
+    def money(amount: float) -> str:
+        return f"INR {float(amount):,.0f}"
+
+    def requested_category_from_text(text: str) -> Optional[str]:
+        if not isinstance(category_totals, dict) or not category_totals:
+            return None
+
+        alias_map = {
+            "food": "Food",
+            "groceries": "Food",
+            "transport": "Transport",
+            "travel": "Transport",
+            "shopping": "Shopping",
+            "entertainment": "Entertainment",
+            "utilities": "Utilities",
+            "housing": "Housing",
+            "rent": "Housing",
+        }
+
+        lowered_text = text.lower()
+        for category in category_totals.keys():
+            if str(category).lower() in lowered_text:
+                return str(category)
+
+        for alias, mapped in alias_map.items():
+            if alias in lowered_text and mapped in category_totals:
+                return mapped
+
+        return None
+
+    def build_budget_plan_reply() -> Dict[str, Any]:
+        if not analytics_context:
+            return {
+                "reply": "I need uploaded transaction data first so I can build a budget plan.",
+                "suggestions": finance_suggestions("upload csv", "what is my top spending category?"),
+            }
+
+        budget_status = analytics_context.get("budget_status", {})
+        health = analytics_context.get("financial_health", {})
+        top_category = analytics_context.get("top_category") or "N/A"
+        total_spend = float(analytics_context.get("total_spend", 0) or 0)
+        warning_count = int(budget_status.get("warning_count", 0) or 0)
+        exceeded_count = int(budget_status.get("exceeded_count", 0) or 0)
+
+        category_totals_sorted = sorted(category_totals.items(), key=lambda item: item[1], reverse=True)
+        plan_lines = [
+            f"- Keep your top category, {top_category}, under a weekly cap.",
+            f"- Total spend is {money(total_spend)}. Try to cut your top 2 categories by 10% this month.",
+        ]
+
+        if category_totals_sorted:
+            primary_category, primary_amount = category_totals_sorted[0]
+            plan_lines[0] = f"- Set a weekly cap for {primary_category} at about {money(primary_amount / 4)}."
+
+        if exceeded_count > 0:
+            plan_lines.append(f"- {exceeded_count} category budgets are already exceeded, so pause non-essential spending there.")
+        elif warning_count > 0:
+            plan_lines.append(f"- {warning_count} categories are close to budget limits, so slow spending in those areas.")
+        else:
+            plan_lines.append("- Your budget looks manageable. Keep the same plan and review it weekly.")
+
+        score = health.get("score")
+        label = health.get("label", "unknown")
+
+        return {
+            "reply": (
+                f"Here is your budget plan for next month (financial health: {score}/100, {label}):\n"
+                + "\n".join(plan_lines)
+            ),
+            "suggestions": finance_suggestions(
+                "how can I reduce food expenses?",
+                "show my monthly spending trend",
+                "forecast next month",
+                "what is my top spending category?",
+            ),
+        }
 
     def build_default_suggestions() -> List[str]:
-        return [
-            "predict: amazon grocery order",
-            "show backend status",
-            "how can I reduce transport spending?",
+        return finance_suggestions(
             "what is my top spending category?",
-        ]
+            "show my monthly spending trend",
+            "how can I reduce food expenses?",
+            "give me a budget plan for next month",
+        )
+
+    def build_contextual_suggestions() -> List[str]:
+        if any(keyword in lowered for keyword in ["budget plan", "monthly budget", "plan next month"]):
+            return finance_suggestions(
+                "how can I reduce food expenses?",
+                "show my monthly spending trend",
+                "forecast next month",
+                "what is my top spending category?",
+            )
+        if any(keyword in lowered for keyword in ["forecast"]):
+            return finance_suggestions(
+                "what is my top spending category?",
+                "show my monthly spending trend",
+                "give me a budget plan for next month",
+                "show anomalies",
+            )
+        if any(keyword in lowered for keyword in ["reduce", "save", "tip", "tips"]):
+            return finance_suggestions(
+                "give me a budget plan for next month",
+                "show my monthly spending trend",
+                "what is my top spending category?",
+                "forecast next month",
+            )
+        if "predict" in lowered:
+            return finance_suggestions(
+                "predict: amazon grocery order",
+                "predict: electricity bill payment",
+                "show my monthly spending trend",
+                "what is my top spending category?",
+            )
+
+        return build_default_suggestions()
 
     if any(token in lowered for token in ["hello", "hi", "hey"]):
         return {
             "reply": (
-                "I am ready. I can classify a transaction, explain your spending profile, "
-                "check backend health, and suggest saving actions."
+                "I am Leo, your finance assistant. I can analyze spending, forecast categories, suggest savings actions, "
+                "and predict transaction categories."
             ),
             "suggestions": build_default_suggestions(),
         }
@@ -562,12 +877,64 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "reply": (
                 "You can ask me things like:\n"
-                "1. predict: swiggy dinner\n"
-                "2. show backend status\n"
-                "3. what is my top category\n"
-                "4. how to save more on food"
+                "1. what is my top spending category?\n"
+                "2. how can I reduce food expenses?\n"
+                "3. show my monthly spending trend\n"
+                "4. predict: swiggy dinner"
             ),
             "suggestions": build_default_suggestions(),
+        }
+
+    if any(keyword in lowered for keyword in ["budget plan", "budget plan for next month", "monthly budget", "plan next month"]):
+        return build_budget_plan_reply()
+
+    if any(keyword in lowered for keyword in ["reduce", "save", "tip", "tips"]):
+        llm_reply = generate_llm_reply(message, history, analytics_context)
+        if llm_reply:
+            return {
+                "reply": llm_reply,
+                "suggestions": build_contextual_suggestions(),
+            }
+
+        tips = analytics_context.get("savings_tips", [])
+        requested_category = requested_category_from_text(message)
+
+        if tips:
+            focused_tips = tips[:4]
+            if requested_category:
+                spent = float(category_totals.get(requested_category, 0) or 0)
+                reply = (
+                    f"You spent {money(spent)} on {requested_category}. Here are focused ways to reduce it:\n"
+                    + "\n".join([f"- {tip}" for tip in focused_tips])
+                )
+            else:
+                reply = "Here are focused saving actions:\n" + "\n".join([f"- {tip}" for tip in focused_tips])
+
+            return {
+                "reply": reply,
+                "suggestions": finance_suggestions(
+                    "what is my top spending category?",
+                    "show my monthly spending trend",
+                    "give me a budget plan for next month",
+                    "forecast next month"
+                ),
+            }
+
+        return {
+            "reply": "I need analytics context first. Upload a CSV so I can generate personalized savings tips.",
+            "suggestions": finance_suggestions(
+                "what is my top spending category?",
+                "show my monthly spending trend",
+                "forecast next month",
+                "upload csv",
+            ),
+        }
+
+    llm_reply = generate_llm_reply(message, history, analytics_context)
+    if llm_reply:
+        return {
+            "reply": llm_reply,
+            "suggestions": build_contextual_suggestions(),
         }
 
     if "predict" in lowered:
@@ -601,11 +968,11 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
         )
         return {
             "reply": reply,
-            "suggestions": [
+            "suggestions": finance_suggestions(
                 "predict: uber trip airport",
                 "predict: electricity bill payment",
                 "how can I reduce this category spend?",
-            ],
+            ),
         }
 
     if any(keyword in lowered for keyword in ["health", "status", "backend", "live"]):
@@ -616,7 +983,7 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
         )
         return {
             "reply": reply,
-            "suggestions": ["retrain model", "what is top spending category"],
+            "suggestions": finance_suggestions("what is my top spending category?", "show my monthly spending trend"),
         }
 
     if any(keyword in lowered for keyword in ["retrain", "train model", "refresh model"]):
@@ -627,61 +994,40 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
         if model is None:
             return {
                 "reply": "Retraining could not complete because dataset is empty or invalid.",
-                "suggestions": ["upload a csv", "show backend status"],
+                "suggestions": finance_suggestions("upload csv", "show my monthly spending trend"),
             }
 
         return {
             "reply": f"Model retrained successfully. New validation accuracy: {MODEL_ACCURACY * 100:.1f}%.",
-            "suggestions": ["show backend status", "predict: amazon order"],
+            "suggestions": finance_suggestions("predict: amazon order", "what is my top spending category?"),
         }
 
     if any(keyword in lowered for keyword in ["top category", "highest spend", "top spend", "spending category"]):
         top_category = analytics_context.get("top_category") or "N/A"
         total_spend = float(analytics_context.get("total_spend", 0) or 0)
         return {
-            "reply": f"Top spending category is {top_category}. Total spend is INR {total_spend:,.0f}.",
-            "suggestions": ["give me savings tips", "show category distribution"],
+            "reply": (
+                f"Your top spending category is {top_category}. "
+                f"Total spend is {money(total_spend)}."
+            ),
+            "suggestions": finance_suggestions("how can I reduce food expenses?", "show my monthly spending trend"),
         }
 
     if any(keyword in lowered for keyword in ["how much", "spent", "spend", "expense", "expenses"]):
-        category_totals = analytics_context.get("category_totals", {})
         if isinstance(category_totals, dict) and category_totals:
-            alias_map = {
-                "food": "Food",
-                "groceries": "Food",
-                "transport": "Transport",
-                "travel": "Transport",
-                "shopping": "Shopping",
-                "entertainment": "Entertainment",
-                "utilities": "Utilities",
-                "housing": "Housing",
-                "rent": "Housing",
-            }
-
-            requested_category = None
-            for category in category_totals.keys():
-                if str(category).lower() in lowered:
-                    requested_category = str(category)
-                    break
-
-            if requested_category is None:
-                for alias, mapped in alias_map.items():
-                    if alias in lowered and mapped in category_totals:
-                        requested_category = mapped
-                        break
-
+            requested_category = requested_category_from_text(message)
             if requested_category is not None:
                 spend_amount = float(category_totals.get(requested_category, 0) or 0)
                 return {
-                    "reply": f"You spent INR {spend_amount:,.0f} on {requested_category}.",
-                    "suggestions": ["how can I reduce this category spend?", "show top 5 expenses"],
+                    "reply": f"You spent {money(spend_amount)} on {requested_category}.",
+                    "suggestions": finance_suggestions("how can I reduce food expenses?", "show my monthly spending trend"),
                 }
 
         total_spend = float(analytics_context.get("total_spend", 0) or 0)
         if total_spend > 0:
             return {
-                "reply": f"Your total spend is INR {total_spend:,.0f}.",
-                "suggestions": ["what is my top spending category?", "show top 5 expenses"],
+                "reply": f"Your total spend is {money(total_spend)}.",
+                "suggestions": finance_suggestions("what is my top spending category?", "show my monthly spending trend"),
             }
 
     if any(keyword in lowered for keyword in ["tip", "save", "reduce", "budget"]):
@@ -702,7 +1048,7 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
         if transactions.empty:
             return {
                 "reply": "No transaction data available yet. Upload a CSV first.",
-                "suggestions": ["upload csv", "show backend status"],
+                "suggestions": finance_suggestions("upload csv", "what is my top spending category?"),
             }
 
         top_items = (
@@ -716,14 +1062,14 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
         ]
         return {
             "reply": "Top 5 expenses:\n" + "\n".join(lines),
-            "suggestions": ["show anomalies", "forecast next month"],
+            "suggestions": finance_suggestions("show anomalies", "forecast next month"),
         }
 
     if "last month" in lowered and any(keyword in lowered for keyword in ["spend", "expense"]):
         if transactions.empty:
             return {
                 "reply": "No transaction data available yet. Upload a CSV first.",
-                "suggestions": ["upload csv", "show backend status"],
+                "suggestions": finance_suggestions("upload csv", "show my monthly spending trend"),
             }
 
         last_month = (pd.Timestamp.utcnow().to_period("M") - 1)
@@ -744,7 +1090,7 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
         category_text = requested_category or "all categories"
         return {
             "reply": f"Last month spend for {category_text}: INR {spend_value:,.0f}.",
-            "suggestions": ["top 5 expenses", "forecast next month"],
+            "suggestions": finance_suggestions("top 5 expenses", "forecast next month"),
         }
 
     if "forecast" in lowered:
@@ -756,7 +1102,7 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
         ) or "No forecast categories yet"
         return {
             "reply": f"Predicted next-month total spend is INR {total:,.0f}. Top expected categories: {cat_text}.",
-            "suggestions": ["show anomalies", "what is my top spending category"],
+            "suggestions": finance_suggestions("show anomalies", "what is my top spending category?"),
         }
 
     if "anomal" in lowered:
@@ -764,7 +1110,7 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
         if not anomalies:
             return {
                 "reply": "No anomaly alerts detected right now.",
-                "suggestions": ["forecast next month", "top 5 expenses"],
+                "suggestions": finance_suggestions("forecast next month", "top 5 expenses"),
             }
 
         lines = [
@@ -773,7 +1119,7 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
         ]
         return {
             "reply": "Anomaly alerts:\n" + "\n".join(lines),
-            "suggestions": ["set budget", "forecast next month"],
+            "suggestions": finance_suggestions("give me a budget plan for next month", "forecast next month"),
         }
 
     # Keep responses grounded to supported finance intents instead of returning unrelated summaries.
@@ -787,12 +1133,7 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
                 "I can only help with FinData analytics tasks: predictions, spending insights, backend/model status, "
                 "and savings tips based on your uploaded transactions."
             ),
-            "suggestions": [
-                "predict: uber ride to office",
-                "what is my top spending category?",
-                "show backend status",
-                "give me savings tips",
-            ],
+            "suggestions": finance_suggestions(),
         }
 
     if not dashboard_data:
@@ -801,20 +1142,20 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
                 "I need uploaded transaction data to answer that accurately. Please upload a CSV first, "
                 "then ask again."
             ),
-            "suggestions": ["upload csv", "show backend status", "predict: swiggy order"],
+            "suggestions": finance_suggestions("upload csv", "predict: swiggy order", "what is my top spending category?"),
         }
 
     return {
         "reply": (
-            "I could not map that to a specific command. Ask about top category, total spend, savings tips, "
-            "backend status, or use 'predict: <transaction text>'."
+            "I could not map that to a specific finance question. Ask about top category, total spend, "
+            "savings tips, forecast, or use 'predict: <transaction text>'."
         ),
-        "suggestions": [
+        "suggestions": finance_suggestions(
             "what is my top spending category?",
-            "how can I reduce food spending?",
-            "show backend status",
+            "how can I reduce food expenses?",
+            "show my monthly spending trend",
             "predict: electricity bill payment",
-        ],
+        ),
     }
 
 
