@@ -846,7 +846,7 @@ def ai_chat(data: Dict[str, Any]) -> Dict[str, Any]:
 
     def parse_savings_target(text: str) -> Optional[float]:
         match = re.search(r"(?:save|savings?|reduce)\D{0,12}(\d[\d,]*)", text.lower())
-        if not match:
+        if not match: 
             return None
         try:
             return float(match.group(1).replace(",", ""))
